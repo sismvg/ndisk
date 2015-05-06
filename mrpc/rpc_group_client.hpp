@@ -1,0 +1,4 @@
+#ifndef ISU_RPC_GROUP_CLIENT_HPP
+#define ISU_RPC_GROUP_CLIENT_HPP
+
+#endif

@@ -1,0 +1,3 @@
+#ifndef ISU_RPC_GROUP_SERVER_HPP
+#define ISU_RPC_GROUP_SERVER_HPP
+#endif
