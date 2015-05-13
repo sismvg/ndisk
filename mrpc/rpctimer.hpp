@@ -6,7 +6,7 @@
 #include <map>
 #include <atomic>
 #include <functional>
-
+#include <boost/thread/mutex.hpp>
 #include <rpclock.hpp>
 
 //MSG:´úÂëÓÅ»¯-mstime,rpcimter,
@@ -93,7 +93,7 @@ private:
 #else
 	typedef int system_timer_handle;
 #endif
-
+	typedef boost::mutex rwlock;
 	struct timer_arg
 	{
 		typedef size_t operbit_type;

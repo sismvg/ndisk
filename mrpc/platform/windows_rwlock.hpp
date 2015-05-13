@@ -1,7 +1,7 @@
 #ifndef ISU_WINDOWS_RWLOCK_HPP
 #define ISU_WINDOWS_RWLOCK_HPP
 
-#include <windows.h>
+#include <WinSock2.h>
 
 class rwlock
 {
@@ -18,6 +18,7 @@ public:
 	void write_unlock();
 	bool write_try_lock();
 private:
+public:
 	SRWLOCK _lock;
 };
 #endif

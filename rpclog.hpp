@@ -3,32 +3,85 @@
 
 #include <string>
 #include <vector>
+#include <hash_map>
+#include <ostream>
 
 #include <rpclock.hpp>
+
+//无论什么编码,一律转换到unicode
+
+typedef std::wstring log_string_type;
+typedef unsigned long id_type;
+
+enum logmsg_level{
+	log_debug, log_warning, log_error,
+	log_fault
+};
+
+struct log_item
+{
+	log_item();
+	log_item(logmsg_level, id_type, const log_string_type&);
+	log_item(logmsg_level, id_type, const std::string&);
+
+	logmsg_level level;
+	id_type log_thread;
+	log_string_type str;
+private:
+	void _init(logmsg_level lev, id_type, const log_string_type&);
+public:
+	static std::hash_map<logmsg_level, log_string_type> level_to_string;
+};
 
 class rpclog
 {
 public:
-	enum logmsg_level{
-		log_debug, log_warning, log_error,
-		log_fault
-	};
-//	template<class... Arg>
-//	void log(logmsg_level, const Arg&... arg);
+	rpclog();
+	~rpclog();
+	friend struct log_item;
 
-	template<class Stream>
-	void dire_to(Stream&);
+	template<class String>
+	void set_name(id_type thread_id, const String& name)
+	{
+		auto wlock = ISU_AUTO_WLOCK(_id_map_lock);
+		_id_map[thread_id] = _to_unicode(name);
+	}
+
+	template<class String>
+	void set_thread_name(const String& name)
+	{
+		id_type id = GetCurrentThreadId();
+		set_name(id, name);
+	}
+
+	static log_string_type get_name(id_type thread_id)
+	{
+		auto wlock = ISU_AUTO_WLOCK(_id_map_lock);
+		auto ret = _id_map[thread_id];
+		return ret;
+	}
+
+	static log_string_type get_name()
+	{
+		return get_name(GetCurrentThreadId());
+	}
+
+	//必须保证stream在log死前一直有效
+	void dire_to(std::wostream&);//重定向
 
 	template<class String>
 	void log(logmsg_level lev, const String& str)
 	{
 		auto wlock = ISU_AUTO_WLOCK(_lock);
-		_logs.push_back(std::make_pair(lev, str));
+		log_item item(lev, GetCurrentThreadId(), str);
+		_logs.push_back(item);
+		_write_to_stream(item);
 	}
+
 	void log(logmsg_level lev, const char* str);
 
 	typedef
-		std::vector < std::pair<logmsg_level, std::string> >
+		std::vector<log_item>
 		::const_iterator const_iterator;
 
 	const_iterator begin() const;
@@ -41,6 +94,21 @@ public:
 	void unlock_for_iter();
 private:
 	rwlock _lock;
-	std::vector<std::pair<logmsg_level,std::string>> _logs;
+public:
+	static rwlock _id_map_lock;
+	static std::hash_map<id_type, log_string_type> _id_map;
+private:
+	std::vector<log_item> _logs;
+	std::wostream* _stream;
+
+	void _write_to_stream(const log_item&);
+public:
+	static log_string_type _to_unicode(const std::string&);
+	static const log_string_type& _to_unicode(const log_string_type&);
+
 };
+
+std::wostream& operator<<(std::wostream& stream, const log_item&);
+std::wistream& operator>>(std::wistream& stream, log_item&);
+
 #endif

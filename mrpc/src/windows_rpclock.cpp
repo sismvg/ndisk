@@ -1,6 +1,7 @@
 
 #include "platform/windows_rpclock.hpp"
-
+#include <stdexcept>
+#include <iostream>
 rpclock::rpclock()
 {
 
@@ -29,11 +30,23 @@ initlock::initlock(size_t init_count)
 initlock::~initlock()
 {}
 
+void initlock::force_unlock()
+{
+
+	_lock.write_unlock();
+}
+
 void initlock::fin()
 {
 	++_count;
 	if (_count == _max_count)
-		_lock.write_unlock();
+	{
+		force_unlock();
+	}
+	else if (_count > _max_count)
+	{
+		throw std::runtime_error("wtf");
+	}
 }
 
 void initlock::ready_wait()
@@ -44,10 +57,11 @@ void initlock::ready_wait()
 void initlock::break_wait()
 {
 	_lock.write_unlock();
+	force_unlock();
 }
 
 void initlock::wait()
 {
 	_lock.write_lock();
-	_lock.write_unlock();
+	force_unlock();
 }

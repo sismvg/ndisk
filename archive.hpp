@@ -11,7 +11,7 @@ size_t rarchive_impl_air(vector_air air, const void* buf,
 	//iter_wapper是为了纠正 type[size]这样的数组传入的时候不被识别为指针的问题
 	size_t presize = buf_size;
 	ITER_VALUE_TYPE(T2);
-	auto value_size = sizeof(value_type);
+	auto value_size = archived_size<value_type>();
 
 	size_t sizeof_cnt = incerment<1>(buf,
 		rarchive_from(buf, buf_size,count));
@@ -54,7 +54,7 @@ size_t rarchive_impl(const void* buf, std::size_t buf_size, T& a1, Arg&... arg)
 {
 	size_t a1_size = 
 		incerment<1>(buf, rarchive_from(buf, buf_size, a1));
-	return rarchive_impl(buf, buf_size - a1_size, arg...);
+	return a1_size+rarchive_impl(buf, buf_size - a1_size, arg...);
 }
 
 template<class... Arg>
@@ -69,7 +69,10 @@ memory_block archive(const Arg&... arg)
 	std::size_t buf_size = archived_size(arg...);
 	char* buf = new char[buf_size];
 	archive_to(buf, buf_size, arg...);
-	return std::make_pair(buf, buf_size);
+	memory_block ret;
+	ret.buffer = buf;
+	ret.size = buf_size;
+	return ret;
 }
 
 inline std::size_t archive_to_impl(void* buf, std::size_t buf_size)
@@ -141,9 +144,9 @@ template<class T>
 memory_block archive(const T& value)
 {
 	memory_block blk;
-	blk.second = archived_size(value);
-	blk.first = new char[blk.second];
-	archive_to(blk.first, blk.second, value, blk.second);
+	blk.size = archived_size(value);
+	blk.buffer = new char[blk.size];
+	archive_to(blk.buffer, blk.size, value, blk.size);
 	return blk;
 }
 #endif

@@ -1,5 +1,5 @@
 
-#include <windows.h>
+#include <winsock2.h>
 #include <vector>
 #include <rpctimer.hpp>
 #include <algorithm>
@@ -26,7 +26,11 @@ void rpctimer::cancel_timer(timer_handle handle)
 		handle = 0;
 		_active_time = mstime_t(-1, 0, 0);
 		_sys_timer = 0;
+		_waitlist_lock.lock();
+	//	mylog.log(log_debug, "wait list lock in cancel timer");
 		_try_set_next_timer(_abstime());
+		_waitlist_lock.unlock();
+	//	mylog.log(log_debug, "wait list unnnnlock in cancel timer");
 	}
 	else
 	{
@@ -85,16 +89,19 @@ rpctimer::timer_handle rpctimer::set_timer(
 
 	mstime_t newtm(curtime, timeout, window);
 
-	auto timers_wlock = ISU_AUTO_WLOCK(_timers_lock);
+	_timers_lock.lock();
 	auto pair = _insert_timer(par, newtm);
 	auto handle = pair.first->first;
-	timers_wlock.unlock();
+	_timers_lock.unlock();
 
-	auto waitlist_wlock = ISU_AUTO_WLOCK(_waitlist_lock);
+	//mylog.log(log_error, "list lock in set_timer");
+	_waitlist_lock.lock();
 	if (!_try_set_timer(curtime, handle, newtm, par, pair.first->second))
 	{
 		_insert_mission(handle, newtm);
 	}
+	//mylog.log(log_error, "list unnnnlock in set_timer");
+	_waitlist_lock.unlock();
 	return handle;
 }
 
@@ -141,8 +148,9 @@ void rpctimer::_rpctimer_impl(SYS_TIMER_CALLBACK_ARG)
 	mstime_t* time = &arg->tm;
 	mytime_t curtime = _abstime();
 
-	auto member_lock = ISU_AUTO_WLOCK(_member_lock);
+	_member_lock.lock();
 	_active_time.set_abstime(curtime);
+	_member_lock.unlock();
 	this->_callback(arg->handle, arg->parment);
 
 	_callback_than(arg->handle, *arg->arg);
@@ -152,52 +160,75 @@ void rpctimer::_rpctimer_impl(SYS_TIMER_CALLBACK_ARG)
 	vec_type vec;
 
 	//需要保存一次再调用，由于规则：每个定时器同一时间，只能被调用一次
-	auto waitlist_wlock = ISU_AUTO_WLOCK(_waitlist_lock);
+
+//	mylog.log(log_error, "list lock in timer_impl");
+	_waitlist_lock.lock();
 	auto fn = [&](vec_type::reference iter)
 	{
 		auto& pair = *iter;
 
-		auto arg = _timers.find(pair.second)->second;
-		_callback(iter->second, arg.arg);
-		_callback_than(iter->second, arg);
+		auto myiter = _timers.find(pair.second);
+		if (myiter != _timers.end())
+		{
+			auto arg = myiter->second;
+			_callback(myiter->first, arg.arg);
+			_callback_than(iter->second, arg);
 
-		mstime_t tm = pair.first;
-		tm.set_abstime(curtime);
-		_insert_mission(pair.second, tm);
-		_waitlist.erase(iter++);
+			mstime_t tm = pair.first;
+			tm.set_abstime(curtime);
+			_insert_mission(pair.second, tm);
+			_waitlist.erase(iter++);
+		}
+		else
+		{
+			mylog.log(log_error, "error can not find it");
+		}
 
 	};
+//	mylog.log(log_error, "list unnnnnnlock in timer_impl");
+	_waitlist_lock.unlock();
+	//mylog.log(log_debug, "list relock in timer_impl");
+	_waitlist_lock.lock();
+//	mylog.log(log_debug, "list relock in");
 	for (auto iter=_waitlist.begin(); iter != _waitlist.end();)
 	{
 		auto& pair = *iter;
 		//调用所有time在mstime_t的窗口期的函数
 		if (_timers.find(pair.second) == _timers.end())
 		{
+		//	mylog.log(log_debug, "list relock in find");
 			_waitlist.erase(iter++);
 		}
 		else if (pair.first.in_window(curtime) || curtime>pair.first)
 		{
 	//		vec.push_back(iter++);
+		//	mylog.log(log_debug, "list relock in in_window");
 			fn(iter);
+		//	mylog.log(log_debug, "list relock in fn");
 		}
 		else
 		{
+		//	mylog.log(log_debug, "list relock in incerment");
 			++iter;
 		}
 	}
-
 	//
 	if (!_try_set_next_timer(curtime))
 	{
 		if (arg->actime_out != _active_time.timeout())
 		{
+			//mylog.log(log_debug, "list reunnnnlock in timer_impl - nex_timer");
+			_waitlist_lock.unlock();
 			system_timer_handle tmp = _sys_timer;
 			arg->actime_out = _active_time.timeout();
 			_sys_timer = _set_timer_impl(_active_time.timeout(),
 				_rpctimer_callback, arg);
 			_kill_systimer(tmp);
+			return;
 		}
 	}
+	//mylog.log(log_debug, "list reunnnlock in timer_impl");
+	_waitlist_lock.unlock();
 }
 
 bool rpctimer::_try_set_next_timer(mytime_t curtime)

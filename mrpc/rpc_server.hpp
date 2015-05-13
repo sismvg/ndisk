@@ -11,7 +11,14 @@
 #include <rpclock.hpp>
 #include <rpctimer.hpp>
 #include <rpcudp.hpp>
+#include <rpc_group_server.hpp>
+#include <rpc_group_client.hpp>
+
 typedef client_mode server_mode;
+
+typedef size_t(*rpc_server_call)(const_memory_block, \
+	const rpc_head&, rpc_request_msg,rpc_group_server&);
+
 class rpc_server
 {
 public:
@@ -36,40 +43,25 @@ private:
 	//没有socket,因为运行时才创建他
 	sockaddr_in _server_addr;
 
-//	rpctimer _timer;
 	void _tcp_server(initlock* = nullptr);
 
 	typedef int sockaddr_key;
 	static sockaddr_key _make_sockaddr_key(const sockaddr_in&);
-	std::hash_map<sockaddr_key, socket_type> _connected;//只有在tcp,udp混合模式下有效
+	std::hash_map<sockaddr_key, rpcudp*> _connected;//只有在tcp,udp混合模式下有效
 	void _udp_server(initlock* =nullptr);
-	struct rpc_arg;
-	void _register_ack(const rpc_head&, const rpc_arg&);
-	rwlock _lock;
-	void _rpc_ack_callback(size_t id, sysptr_t arg);
-	bool _check_ack(rpcid head);
-	struct rpc_arg
-	{
-		const void* buffer;
-		size_t size;
-		size_t req;
-		sockaddr_in addr;
-		socket_type sock;
-	};
 
-	std::hash_map<rpcid, rpc_arg> _map;
 	void _tcp_client_process(rpcudp& client,
 		const sockaddr_in& addr, int addrlen);
 
 	void _udp_client_process(rpcudp& udpsock,
 		const sockaddr_in& addr, int addrlen,
-		const void* buffer, size_t bufsize);
+		const_memory_block blk);
 
 	void _client_process(rpcudp& sock,
 		const sockaddr_in& addr, int addrlen,
-		const void* buffer, size_t bufsize, bool send_by_udp);
+		const_memory_block blk, bool send_by_udp);
 
-	void _send(rpcid id,rpcudp& sock, const rpc_s_result&,
+	void _send(rpcid id,rpcudp& sock, const_memory_block,
 		const sockaddr_in& addr, int addrlen, bool send_by_udp);
 	
 	//utility

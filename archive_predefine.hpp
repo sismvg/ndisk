@@ -155,16 +155,15 @@ size_t stl_rarchive_from_insert_iterator(
 	ARCHIVE(std::##name,tmp,tmpg)\
 	{\
 		memory_block ret;\
-		ret.second=archived_size(value);\
-		ret.first=new char[ret.second];\
-		archive_to(ret.first,ret.second,value);\
+		ret.size=archived_size(value);\
+		ret.buffer=new char[ret.size];\
+		archive_to(ret.buffer,ret.size,value);\
 		return ret;\
 	}\
 	RARCHINE_FROM(std::##name,tmp,tmpg)\
 	{\
 		size_t count=0;\
 		auto ret= MAKE_NAME(stl_rarchive_from_,iter) (buffer,size,value);\
-		std::cout<<value.size()<<std::endl;\
 		return ret;\
 	}\
 	RARCHIVE(std::##name,tmp,tmpg)\

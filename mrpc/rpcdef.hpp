@@ -4,7 +4,10 @@
 #include <xstddef>
 #include <archive.hpp>
 #include <boost/noncopyable.hpp>
-#if defined(_WIN32)||defined(_WIN64)
+#include <iostream>
+#include <rpclog.hpp>
+extern rpclog mylog;
+#ifdef _MSC_VER
 #define _PLATFORM_WINDOWS
 #else
 #define _PLATFORM_UNKNOW
@@ -12,58 +15,101 @@
 
 typedef std::size_t size_t;
 typedef unsigned int func_ident;
-typedef unsigned long long rpcid;
-typedef rpcid ulong64;
+typedef unsigned long long ulong64;
 typedef unsigned int rpcver;
 typedef void* sysptr_t;
 typedef int socket_type;
 typedef boost::noncopyable mynocopyable;
 
 enum rpc_request_msg{ rpc_error, rpc_success, rpc_async, rpc_source_error };
-enum client_mode{ udp = 0x01, tcp = 0x10, udp_and_tcp = 0x11 };//仅udp,tcp作为通信方式,tcp和udp混合通信
-enum rpc_pack{ rpc_return = 0, rpc_ack, rpc_return_with_ack };
+
+//仅udp,tcp作为通信方式,tcp和udp混合通信
+enum client_mode{ udp = 0x01, tcp = 0x10, udp_and_tcp = 0x11 };
+
 const size_t RPC_SERVER_PORT = 8083;
-const size_t DEFAULT_RPC_BUFSIZE = 64;
+const size_t DEFAULT_RPC_BUFSIZE = 1024;
+
+typedef void(*rpc_callback)(sysptr_t);
+
+struct rpcinfo
+{
+	size_t flag;
+};
+
+class rwlock;
+
+struct sync_rpcinfo
+	:public rpcinfo
+{
+	~sync_rpcinfo()
+	{
+		std::cout << "析构" << std::endl;
+	}
+	rwlock* locke;
+	const_memory_block result;
+};
+
+struct async_rpcinfo
+	:rpcinfo
+{
+	rpc_callback callback;
+	sysptr_t parment;
+};
+
+#define ID_ISSYNC 0x80000000
+struct rpcid
+{
+	rpcid();
+	rpcid(const ulong64&);
+
+	operator ulong64() const;
+
+	size_t funcid;
+	size_t id;
+};
 
 struct rpc_head
 {
-	rpcver ver;
 	rpcid id;
+	rpcinfo* info;
 };
-
-struct rpc_s_result
+//字节对齐问题
+inline size_t archived_size(const rpc_head& head)
 {
-	void* buffer;
-	size_t size;
-};
+	size_t ret = 0;
+	if (head.id.id&ID_ISSYNC)
+		ret = sizeof(size_t)*2 + sizeof(rpcinfo);
+	else
+		ret = sizeof(size_t) + sizeof(rpcinfo);
+	return ret;
+}
 
-struct rpcid_un
+inline size_t archive_to(memory_address buffer, size_t size, 
+	const rpc_head& value)
 {
-public:
-	typedef std::size_t size_t;
-	rpcid_un(rpcid id)
-	{
-		from_rpcid(id);
-	}
-	rpcid_un(size_t num, size_t id)
-		:_number(num), _ms_id(id)
-	{
-	}
+	size_t ret = 0;
+	if (value.id.id&ID_ISSYNC)
+		ret = archive_to(buffer,size, value.id, value.info);
+	else
+		ret = archive_to(buffer, size, value.id.funcid, value.info);
+	return ret;
+}
 
-	size_t number() const;
-	size_t ms_id() const;
-	rpcid to_rpcid() const;
-	void from_rpcid(rpcid);
-private:
-	size_t _ms_id;
-	size_t _number;
-};
+inline size_t rarchive_from(const void* buf, size_t size, rpc_head& value)
+{
+	size_t ret = 0;
+	if (value.id.id&ID_ISSYNC)
+		ret = rarchive(buf, size, value.id, value.info);
+	else
+		ret = rarchive(buf, size, value.id.funcid, value.info);
+	return ret;
+}
 
-typedef void(*rpc_callback)(sysptr_t);
-typedef int(*rpc_server_call)(const rpc_s_result&);
-
+inline size_t rarchive(const void* buf, size_t size, rpc_head& value)
+{
+	return rarchive_from(buf, size, value);
+}
 func_ident rpc_number_generic();
-
 
 template<class T>
 struct result_type
@@ -83,61 +129,39 @@ struct result_type < T(Arg...) >
 	typedef T type;
 };
 
-template<class... Arg>
-rpc_s_result split_pack(const void* buffer, size_t bufsize, Arg&... arg)
-{
-	rpc_s_result ret;
-	size_t size = archived_size(arg...);
-	rarchive(buffer, bufsize, arg...);
-	ret.size = bufsize - size;
-	ret.buffer = new char[ret.size];
-	memcpy(ret.buffer,
-		reinterpret_cast<const char*>(buffer) +size, ret.size);
-	return ret;
-}
-
-#define RPC_NUMBER_NAME(func) func_number
-
-#define RPC_NUMBER_DEF(func)\
-	func_ident RPC_NUMBER_NAME(func)()\
-	{\
-		static const func_ident ret=rpc_number_generic();\
-		return ret;\
-	}
-#define RPC_REGISTER_SERVER_STUB(func,stub_name)\
-	static auto ident_generic=[=]() ->func_ident {\
-	func_ident ident=RPC_NUMBER_NAME(func)();\
-	return ident;\
-	};\
-	static func_ident ident=ident_generic()
-
-#define RPC_SERVER_STUB(func,stub_name)\
-	auto stub_name(const rpc_s_result& arg)\
-	->result_type<decltype(func)>::type\
-	{\
-		RPC_REGISTER_SERVER_STUB(func,stub_name);\
-		auto val=rpc_rarchive_call(arg.buffer,arg.size,func);\
-		return val;\
-	}\
-	static int func##var=([&]() ->int\
-	{\
-		rpc_server::register_rpc(RPC_NUMBER_NAME(func)(),stub_name);\
-		return 0;\
-	})();
-
-#define RPC_CLIENT_STUB(func,stub_name,client)\
-	template<class... Arg>\
-	auto stub_name(Arg... arg)\
-		->decltype(func(arg...))\
-	{\
-		rpc_s_result ret=\
-			client.rpc_generic(nullptr,RPC_NUMBER_NAME(func)(),arg...);\
-		typedef decltype(func(arg...)) result_type;\
-		result_type func_result;\
-		rarchive(ret.buffer,ret.size,func_result);\
-		return func_result;\
-	}
-
-
 void logit(const char* str);
+
+//
+struct mycount
+{
+	char flag() const;//inface 没啥意义
+	void set_flag(char flag);
+	void clear_flag();
+
+	char group_type : 8;
+	size_t size : 24;
+};
+
+struct group_impl
+{
+	mycount miscount;//mis的数量
+	size_t mislength;//大多数mis的长度
+	size_t that_length_count;//有多少个连续的与mislength相同的mis
+	int nop;
+};
+
+
+//为了扩展性，不用enum作为定义
+#define GRPACK_ASYNC 0x80
+#define GRPACK_HAVE_MSG_LOCK 0x40
+#define GRPACK_SYNCPACK_FORCE_SIZE 0x20
+#define GRPACK_IS_SINGAL_PACK 0x10
+#define GRPACK_COMPRESSED 0x8
+#define GRPACK_LAST_3BIT_IS_SET 0x7
+
+//
+#define GRP_STANDBY 0x01
+#define GRP_MANUALLY_STANDBY 0x10
+#define GRP_LENGTH_BROKEN 0x100
+
 #endif

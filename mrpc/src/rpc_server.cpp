@@ -18,7 +18,6 @@ rpc_server::rpc_server(server_mode mode, const sockaddr_in& addr,
 	if (_backlog == 0)
 		_backlog = 5;
 }
-
 rpc_server::~rpc_server()
 {
 	stop();
@@ -98,8 +97,10 @@ void rpc_server::_udp_server(initlock* lock)
 				client_addr, client_length);
 			if (dgrmsize != SOCKET_ERROR)
 			{
+				const_memory_block blk;
+				blk.buffer = buffer; blk.size = dgrmsize;
 				_udp_client_process(udpsock, client_addr,
-					client_length, buffer, dgrmsize);
+					client_length, blk);
 			}
 		}
 	});
@@ -116,121 +117,64 @@ socket_type rpc_server::_rpc_accept(
 void rpc_server::_tcp_client_process(rpcudp& client,
 	const sockaddr_in& addr, int addrlen)
 {
-	char buffer[DEFAULT_RPC_BUFSIZE];
-	char bufsize = DEFAULT_RPC_BUFSIZE;
+	while (true)
+	{
+		char buffer[DEFAULT_RPC_BUFSIZE];
+		size_t bufsize = DEFAULT_RPC_BUFSIZE;
 
-	int dgrmsize = recv(client.socket(), buffer, bufsize, 0);
-	_client_process(client, addr, addrlen, buffer, dgrmsize, false);
+		int dgrmsize = recv(client.socket(), buffer, bufsize, 0);
+		const_memory_block blk;
+		blk.buffer = buffer; blk.size = dgrmsize;
+		_client_process(client, addr, addrlen, blk, false);
+	}
 }
 
 #define RPC_REQUEST_ARGS head,msg
 void rpc_server::_client_process(rpcudp& sock,
 	const sockaddr_in& addr, int addrlen,
-	const void* buffer, size_t bufsize, bool send_by_udp)
+	const_memory_block blk, bool send_by_udp)
 {
-	rpc_head head;
-	rpc_s_result argbuf;
-	rarchive(buffer, bufsize, head);
+	rpc_group_middleware middleware(blk);
+	rpc_group_server grp(middleware);
 
-	const auto* cbuf = reinterpret_cast<const char*>(buffer);
-	argbuf.buffer = const_cast<char*>(cbuf + sizeof(head));//WARNING:const_cast
-	argbuf.size = bufsize - sizeof(head);
-
-	rpcid_un un(head.id);
-
-	rpc_request_msg msg;
-	auto iter = rpc_local().find(un.number());
-	if (iter == rpc_local().end())
+	middleware.split_group_item(
+		[&](const rpc_head& head, const_memory_block blk)
+		->size_t
 	{
-		msg = rpc_error;
-		//send back
-	}
-	else
-	{
-		_async_call([&]()
+		rpc_head back_head = head;
+		rpc_request_msg msg;
+		auto iter = rpc_local().find(head.id.funcid);
+		if (iter == rpc_local().end())
 		{
-			msg = rpc_success;
-			if (false)//send_by_udp)
-			{
-				rpc_s_result reqbuf;
-				auto pair = archive(rpc_ack, head);
-				reqbuf.buffer = pair.first;
-				reqbuf.size = pair.second;
-				size_t type = 0;
-				rarchive(pair.first,pair.second,type);
-				_send(head.id, sock, reqbuf, addr, addrlen, true);
-			}
-			int val =
-				iter->second(/*RPC_REQUEST_ARGS, */argbuf);
-			rpc_s_result archived_result;
-			auto pair = archive(head, msg, val);
-			archived_result.buffer = pair.first;
-			archived_result.size = pair.second;
-			if (false)//send_by_udp)
-			{
-				rpc_arg arg;
-				arg.buffer = pair.first;
-				arg.size = pair.second;
-			//.//	arg.sock = sock;
-				arg.addr = addr;
-				arg.req = 0;
-				//_register_ack(head, arg);
-			}
-			_send(head.id, sock, archived_result,
-				addr, addrlen, send_by_udp);
-		});
-	}
-}
-
-bool rpc_server::_check_ack(rpcid id)
-{
-	auto rlock = ISU_AUTO_RLOCK(_lock);
-	auto iter = _map.find(id);
-	if (iter != _map.end())
-	{
-		rpc_s_result argbuf;
-		auto& arg = iter->second;
-		if (arg.req ==0)//表示没有ack
-		{
-			argbuf.buffer = const_cast<void*>(arg.buffer);
-			argbuf.size = arg.size;
-			//_send(arg.sock, argbuf, arg.addr, sizeof(arg.addr), true);
-			return false;
+			msg = rpc_error;
 		}
 		else
 		{
-			rlock.unlock();
-			auto wlock = ISU_AUTO_WLOCK(_lock);
-			_map.erase(iter);
-			return true;
+			size_t adv = 0;
+			_async_call([&]()
+			{
+				msg = rpc_success;
+				auto rpc_server_stub = iter->second;
+				adv = rpc_server_stub(blk, back_head, msg, grp);
+				if (grp.standby())
+					_send(head.id, sock, grp.group_block(),
+					addr, addrlen, send_by_udp);
+			});
+			return adv;
 		}
-	}
-	return true;
+		return 0;
+	});
 }
 
-void rpc_server::_register_ack(const rpc_head& head,const rpc_arg& arg)
-{
-	auto wlock = ISU_AUTO_WLOCK(_lock);
-	auto iter = _map.find(head.id);
-	if (iter == _map.end())
-	{
-		_map.insert(std::make_pair(head.id, arg));
-	}
-}
-
-void rpc_server::_rpc_ack_callback(size_t id, sysptr_t arg)
-{
-}
 
 void rpc_server::_udp_client_process(rpcudp& udpsock,
-	const sockaddr_in& addr, int addrlen, const void* buffer, size_t bufsize)
+	const sockaddr_in& addr, int addrlen, const_memory_block blk)
 {//MSG:I know ,argument list is too long.
-	_client_process(udpsock, addr, addrlen, buffer, bufsize, true);
+	_client_process(udpsock, addr, addrlen, blk, true);
 }
 
 void rpc_server::_send(
-	rpcid id,
-	rpcudp& sock, const rpc_s_result& argbuf, 
+	rpcid id,rpcudp& sock, const_memory_block argbuf, 
 	const sockaddr_in& addr, int addrlen, bool send_by_udp)
 {
 	const char* cbuf = reinterpret_cast<const char*>(argbuf.buffer);
@@ -244,8 +188,8 @@ void rpc_server::_send(
 	{
 		if (argbuf.size >= _big_packet() && _mode&tcp)
 		{
-			//auto& sock1 = _connected[_make_sockaddr_key(addr)];
-		//..	send(sock1.socket(), cbuf, bufsize, 0);
+			auto& sock1 = *_connected[_make_sockaddr_key(addr)];
+			send(sock1.socket(), cbuf, bufsize, 0);
 		}
 		else
 		{

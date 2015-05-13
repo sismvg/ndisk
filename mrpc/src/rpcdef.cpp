@@ -3,27 +3,24 @@
 #include <rpclock.hpp>
 #include <iostream>
 
-size_t rpcid_un::number() const
+rpclog mylog;
+
+rpcid::rpcid()
+	:funcid(0),id(0)
 {
-	return _number;
+	id |= ID_ISSYNC;
 }
 
-size_t rpcid_un::ms_id() const
+rpcid::rpcid(const ulong64& val)
 {
-	return _ms_id;
+	rarchive_from(&val,sizeof(ulong64),*this);
 }
 
-rpcid rpcid_un::to_rpcid() const
+rpcid::operator ulong64() const
 {
-	rpcid id = _number;
-	id <<= sizeof(_number) * 8;
-	id |= _ms_id;
-	return id;
-}
-
-void rpcid_un::from_rpcid(rpcid id)
-{
-	*this = *reinterpret_cast<rpcid_un*>(&id);
+	ulong64 ret = 0;
+	rarchive_from(this, sizeof(rpcid), ret);
+	return ret;
 }
 
 size_t rpc_number_generic()
