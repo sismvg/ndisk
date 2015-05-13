@@ -8,6 +8,7 @@
 
 #include <boost/mpl/if.hpp>
 
+extern int ptrv;
 template<class T>
 struct real_type
 {
@@ -55,7 +56,87 @@ public:
 
 typedef std::size_t size_t;
 typedef void* memory_address;
-typedef std::pair<memory_address, size_t> memory_block;
+typedef const void* const_memory_address;
+
+struct memory_block
+{
+	memory_block()
+		:buffer(nullptr), size(0)
+	{}
+
+	memory_block(memory_address addr, size_t sz)
+		:buffer(addr), size(sz)
+	{}
+
+	memory_address buffer;
+	size_t size;
+};
+
+struct const_memory_block
+{
+	const_memory_block()
+		:buffer(nullptr),size(0)
+	{}
+
+	const_memory_block(const_memory_address addr, size_t sz)
+		:buffer(addr), size(sz)
+	{}
+
+	const_memory_block(const memory_block& blk)
+		:buffer(blk.buffer), size(blk.size)
+	{}
+
+	const_memory_address buffer;
+	size_t size;
+};
+
+typedef long long long64;
+
+template<class MemBlk>
+MemBlk advance(const MemBlk& blk, size_t adv)
+{
+	MemBlk ret = blk;
+	advance_in(ret, adv);
+	return ret;
+}
+
+template<class MemBlk>
+void advance_in(MemBlk& blk, size_t adv)
+{
+	advance_in(blk.buffer, blk.size, adv);
+}
+
+#define ADVANCE_BLK(name) name##emory_block blk;\
+	blk.buffer=buffer;\
+	blk.size=size;\
+	advance_in(blk,adv);\
+	return blk
+
+inline memory_block 
+	advance(void* buffer, size_t size, size_t adv)
+{
+	ADVANCE_BLK(m);
+}
+
+inline const_memory_block 
+	advance(const void* buffer, size_t size, size_t adv)
+{
+	ADVANCE_BLK(const_m);
+}
+
+template<class Void>//MSG:嗯...don't worry
+inline void advance_in(Void*& buffer, size_t& size, size_t adv)
+{//一律当成非const,当然内部不会修改他
+	const auto* tmp = reinterpret_cast<const char*>(buffer);
+	tmp += adv;
+#ifdef _DEBUG
+	if (adv > size)
+		throw std::length_error("advance_in adv"\
+								 "have to equal less to size");
+#endif
+	size -= adv;
+	buffer = reinterpret_cast<Void*>(const_cast<char*>(tmp));
+}
 
 //鉴于这些东西的重载太多。。所以直接扔了个宏
 #define MYIF boost::mpl::if_
