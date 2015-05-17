@@ -50,7 +50,11 @@ const_memory_block rpc_group_client::group_block()
 	{
 		size_t adv=archive_to(ret.buffer, ret.size, _impl,
 			reinterpret_cast<int>(_lock));
-		int val = 0;
+
+		auto my = ret;
+		advance_in(my, adv);
+	//	int val = crc16l(reinterpret_cast<const char*>(my.buffer), my.size);
+		int p = 4;
 	}
 	else if (!(packflag&GRPACK_IS_SINGAL_PACK))
 	{

@@ -2,6 +2,44 @@
 #include <rpcdef.hpp>
 #include <rpclock.hpp>
 #include <iostream>
+#include <archive.hpp>
+
+size_t archived_size(const const_memory_block& blk)
+{
+	return blk.size;
+}
+
+size_t rarchive(const_memory_block blk, memory_block& data)
+{
+	return rarchive_from(blk, data);
+}
+
+size_t rarchive_from(const_memory_block blk, memory_block& data)
+{
+	size_t size = 0;
+	size_t adv = rarchive_from(blk.buffer, blk.size, size);
+	advance_in(blk, adv);
+	memcpy(data.buffer, blk.buffer, size);
+	return adv + size;
+}
+
+memory_block archive(const const_memory_block& blk)
+{
+	memory_block ret;
+	ret.size = blk.size + archived_size<size_t>();
+	ret.buffer = new char[ret.size];
+	archive_to(ret.buffer, ret.size, blk);
+	return ret;
+}
+
+size_t archive_to(memory_address addr,
+	size_t size, const const_memory_block& blk)
+{
+	vector_air ph;
+	archive_to(addr, size, ph,
+		blk.size, reinterpret_cast<const char*>(blk.buffer));
+	return blk.size;
+}
 
 rpclog mylog;
 

@@ -16,6 +16,11 @@ size_t archived_size()
 
 //还没有支持
 template<class T>
+size_t archived_size(reference_type)
+{
+	return sizeof(typename std::remove_reference<T>::type);
+}
+template<class T>
 size_t archived_size(const T& var, multiple_type);
 template<class T>
 size_t archived_size(const T& var, diamond_type);//菱形继承的类型

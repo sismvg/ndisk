@@ -60,7 +60,7 @@ rpc_client_tk::_wait_sync_request(const rpc_head& head,
 		const_memory_block blk;
 		blk.buffer = buf;
 		blk.size = recvsize;
-		_rpc_process(blk);
+		_rpc_process(nullptr, blk);
 		ret.result = info->result;
 	}
 	ret.msg = rpc_success;
@@ -93,9 +93,10 @@ void rpc_client_tk::_initsock(const sockaddr_in& addr,
 	int val = WSAGetLastError();
 	if (_mode&tcp)
 	{
-		connect(_tcpsock,
+		auto errr=connect(_tcpsock,
 			reinterpret_cast<const sockaddr*>(&server_addr), sizeof(server_addr));
 		val = WSAGetLastError();
+	//	mylog.log(log_debug, "conn");
 		int p = 10;
 	}
 }
@@ -135,8 +136,9 @@ ulong64 rpc_client_tk::_alloc_callid()
 
 void rpc_client_tk::_send_udprpc(rpcid id, SRPC_ARG)
 {
-	_udpsock.sendto(id, blk.buffer, blk.size,
-		0, server, sizeof(server));
+	//size_t val = crc16l(reinterpret_cast<const char*>(blk.buffer), blk.size);
+	_udpsock.sendto(blk.buffer, blk.size,
+		RECV_ACK_BY_SELF, server, sizeof(server));
 }
 
 void rpc_client_tk::_send_tcprpc(SRPC_ARG)
@@ -149,10 +151,12 @@ void rpc_client_tk::_send_tcprpc(SRPC_ARG)
 	int val = WSAGetLastError();
 }
 
-bool rpc_client_tk::_send_rpc(rpc_group_client& group, rpcid id, SRPC_ARG)
+bool rpc_client_tk::_send_rpc(rpc_group_client& group, rpcid id,
+	const sockaddr_in& server)
 {
 	if (group.standby())
 	{
+		auto blk = group.group_block();
 		int addr_length = sizeof(server);
 
 		auto _tmp_mode = _mode;
@@ -180,10 +184,13 @@ bool rpc_client_tk::_send_rpc(rpc_group_client& group, rpcid id, SRPC_ARG)
 	return false;
 }
 
-void rpc_client_tk::_rpc_process(const_memory_block argbuf)
+void rpc_client_tk::_rpc_process(const sockaddr_in* addr,
+	const_memory_block argbuf)
 {
+//	mylog.log(log_debug, "process");
 	rpc_group_middleware group_info(argbuf);
 	size_t index = 0;
+	const sockaddr_in* myaddr = nullptr;
 	group_info.split_group_item(
 		[&](const rpc_head& head,const_memory_block blk)
 		->size_t
@@ -193,17 +200,27 @@ void rpc_client_tk::_rpc_process(const_memory_block argbuf)
 		advance_in(blk, rarchive(blk.buffer, blk.size, msg));
 		if (msg == rpc_success)
 		{
-			ret= _rpc_end(head, blk, _is_async_call(head));
+			ret = _rpc_end(head, blk, nullptr, _is_async_call(head));
+		}
+		else if (msg == rpc_success_and_multicast)
+		{
+			ret = _rpc_end(head, blk, addr, _is_async_call(head));
+		}
+		else
+		{
+			mylog.log(log_debug, "rpc error");
 		}
 		using namespace std;
 		group_info.fin();
 		return ret + sizeof(msg);
 	});
+//	group_info._lock->reset();
 }
 
 size_t rpc_client_tk::_rpc_end(const rpc_head& head, 
-	const_memory_block argbuf, bool is_async /* = false */)
+	const_memory_block argbuf, const sockaddr_in* addr,bool is_async /* = false */)
 {
+	//mylog.log(log_debug, "rpcend");
 	rpcinfo* info = nullptr;
 	size_t ret = 0;
 	if (!is_async)
@@ -212,14 +229,24 @@ size_t rpc_client_tk::_rpc_end(const rpc_head& head,
 		_1->result.buffer = new char[argbuf.size];
 		_1->result.size = argbuf.size;
 		memcpy(const_cast<void*>(_1->result.buffer), argbuf.buffer, argbuf.size);
+	//	mylog.log(log_debug, "unlock");
 		_1->locke->write_unlock();
-		return 4;
+		return 12;
 	}
 	else
 	{
-		auto* _1 = static_cast<async_rpcinfo*>(head.info);
-		_1->callback(_1->parment);
-		ret = 4;
+		if (addr)
+		{
+			auto* ptr = static_cast<multirpc_info*>(head.info);
+			assert(ptr);
+			ret = ptr->callback(argbuf, *addr, ptr->parment);
+		}
+		else
+		{
+			auto* _1 = static_cast<async_rpcinfo*>(head.info);
+			_1->callback(_1->parment);
+			ret = 12;
+		}
 	}
 	return ret;
 }
@@ -228,15 +255,12 @@ void rpc_client_tk::operator()(void* lock)
 {//WARNING:会参与到mgr的初始化中
 	initlock* mylock = reinterpret_cast<initlock*>(lock);
 
-	char argbuf[DEFAULT_RPC_BUFSIZE];
-	unsigned int bufsize = DEFAULT_RPC_BUFSIZE;
-
 	sockaddr_in sender;
 	int sender_length = sizeof(sender);
 	mylock->fin();
 	if (_mode&tcp)
 	{
-		while (true)
+		/*while (true)
 		{
 			char buf[DEFAULT_RPC_BUFSIZE];
 			int recvsize = recv(_tcpsock, buf, DEFAULT_RPC_BUFSIZE, 0);
@@ -244,24 +268,18 @@ void rpc_client_tk::operator()(void* lock)
 			const_memory_block blk;
 			blk.buffer = buf;
 			blk.size = recvsize;
-			_rpc_process(blk);
-		}
+			_rpc_process(nullptr, blk);
+		}*/
 	}
 	else
 	{
 		while (true)
 		{
-			int dgrmsize = _udpsock.recvfrom(argbuf, bufsize, 0,
+			auto blk = _udpsock.recvfrom(0,
 				sender, sender_length);
 			auto cdoe = WSAGetLastError();
-			if (dgrmsize != SOCKET_ERROR)
-			{
-				const_memory_block rpc_back;
-				rpc_back.buffer = argbuf;
-				rpc_back.size = dgrmsize;
-				//TODO:对大型包可以异步
-				_rpc_process(rpc_back);
-			}
+			//TODO:对大型包可以异步
+			_rpc_process(&sender, blk);
 		}
 	}
 }

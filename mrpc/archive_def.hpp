@@ -189,7 +189,7 @@ typedef constant<1> nop_type;
 typedef constant<2> multiple_type;
 typedef constant<3> diamond_type;
 typedef constant<4> normal_type;
-
+typedef constant<5> reference_type;
 template<class T>
 struct detail_of_type_impl
 {
@@ -201,6 +201,11 @@ struct detail_of_type_impl
 	typedef typename
 		MYIF<typename is_noptype<T>::type,
 			nop_type, t1>::type type;
+};
+template<class T>
+struct detail_of_type_impl < T& >
+{
+	typedef reference_type type;
 };
 
 template<class T>
@@ -222,6 +227,11 @@ struct constant_length
 
 typedef std::true_type true_type;
 typedef std::false_type false_type;
+
+#define MPL_VEC boost::mpl::vector
+#define MPL_PUSH boost::mpl::push_back
+#define MPL_INSERT boost::mpl::insert
+#define MPL_IF boost::mpl::if_
 
 #ifndef NOP
 #define NOP
@@ -246,4 +256,11 @@ size_t incerment(const Ptr*& ptr, size_t loop_count)
 	CV_INCERMENT(const);
 }
 
+size_t archived_size(const const_memory_block&);
+memory_block archive(const const_memory_block& blk);
+size_t archive_to(memory_address addr,
+	size_t size, const const_memory_block& blk);
+
+size_t rarchive(const_memory_block, memory_block&);
+size_t rarchive_from(const_memory_block, memory_block&);
 #endif

@@ -38,19 +38,24 @@ void initlock::force_unlock()
 
 void initlock::fin()
 {
-	++_count;
-	if (_count == _max_count)
+	if (_waiter)
 	{
-		force_unlock();
-	}
-	else if (_count > _max_count)
-	{
-		throw std::runtime_error("wtf");
+		++_count;
+		if (_count == _max_count)
+		{
+			--_waiter;
+			force_unlock();
+		}
+		else if (_count > _max_count)
+		{
+			throw std::runtime_error("wtf");
+		}
 	}
 }
 
 void initlock::ready_wait()
 {
+	++_waiter;
 	_lock.write_lock();
 }
 

@@ -6,13 +6,19 @@
 #include <boost/noncopyable.hpp>
 #include <iostream>
 #include <rpclog.hpp>
+#include <boost/crc.hpp>
 extern rpclog mylog;
 #ifdef _MSC_VER
 #define _PLATFORM_WINDOWS
 #else
 #define _PLATFORM_UNKNOW
 #endif
-
+inline size_t crc16l(const char *ptr, size_t len)
+{
+	boost::crc_basic<16> mcrc(0x1021, 0xFFFF, 0);
+	mcrc.process_bytes(ptr, len);
+	return mcrc.checksum();
+}
 typedef std::size_t size_t;
 typedef unsigned int func_ident;
 typedef unsigned long long ulong64;
@@ -21,7 +27,9 @@ typedef void* sysptr_t;
 typedef int socket_type;
 typedef boost::noncopyable mynocopyable;
 
-enum rpc_request_msg{ rpc_error, rpc_success, rpc_async, rpc_source_error };
+enum rpc_request_msg{ 
+	rpc_error, rpc_success,rpc_success_and_multicast,
+	rpc_async, rpc_source_error };
 
 //仅udp,tcp作为通信方式,tcp和udp混合通信
 enum client_mode{ udp = 0x01, tcp = 0x10, udp_and_tcp = 0x11 };
@@ -30,6 +38,9 @@ const size_t RPC_SERVER_PORT = 8083;
 const size_t DEFAULT_RPC_BUFSIZE = 1024;
 
 typedef void(*rpc_callback)(sysptr_t);
+typedef void(*mulitrpc_callback)(sockaddr_in addr, sysptr_t arg);
+typedef size_t(*multirpc_callback_real)(const_memory_block blk,
+	sockaddr_in addr, sysptr_t arg);
 
 struct rpcinfo
 {
@@ -53,6 +64,13 @@ struct async_rpcinfo
 	:rpcinfo
 {
 	rpc_callback callback;
+	sysptr_t parment;
+};
+
+struct multirpc_info
+	:public rpcinfo
+{
+	multirpc_callback_real callback;
 	sysptr_t parment;
 };
 
@@ -163,5 +181,7 @@ struct group_impl
 #define GRP_STANDBY 0x01
 #define GRP_MANUALLY_STANDBY 0x10
 #define GRP_LENGTH_BROKEN 0x100
+
+
 
 #endif

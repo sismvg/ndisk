@@ -87,21 +87,14 @@ void rpc_server::_udp_server(initlock* lock)
 		sockaddr_in client_addr;
 		int client_length = sizeof(client_addr);
 
-		char buffer[DEFAULT_RPC_BUFSIZE];
-		int bufsize = DEFAULT_RPC_BUFSIZE;
 		if (lock)
 			lock->fin();
 		while (true)
 		{
-			int dgrmsize = udpsock.recvfrom(buffer, bufsize, 0,
+			auto blk = udpsock.recvfrom(0,
 				client_addr, client_length);
-			if (dgrmsize != SOCKET_ERROR)
-			{
-				const_memory_block blk;
-				blk.buffer = buffer; blk.size = dgrmsize;
-				_udp_client_process(udpsock, client_addr,
-					client_length, blk);
-			}
+			_udp_client_process(udpsock, client_addr,
+				client_length, blk);
 		}
 	});
 }
@@ -112,6 +105,7 @@ socket_type rpc_server::_rpc_accept(
 	socket_type client=
 		accept(server.socket(), reinterpret_cast<sockaddr*>(&addr), &addr_length);
 	//TODO:可以加入到别的地方去
+	auto err = WSAGetLastError();
 	return client;
 }
 void rpc_server::_tcp_client_process(rpcudp& client,
@@ -122,6 +116,7 @@ void rpc_server::_tcp_client_process(rpcudp& client,
 		char buffer[DEFAULT_RPC_BUFSIZE];
 		size_t bufsize = DEFAULT_RPC_BUFSIZE;
 
+	//	mylog.log(log_error, "recv");
 		int dgrmsize = recv(client.socket(), buffer, bufsize, 0);
 		const_memory_block blk;
 		blk.buffer = buffer; blk.size = dgrmsize;
@@ -136,7 +131,7 @@ void rpc_server::_client_process(rpcudp& sock,
 {
 	rpc_group_middleware middleware(blk);
 	rpc_group_server grp(middleware);
-
+//	mylog.log(log_debug, "all fin");
 	middleware.split_group_item(
 		[&](const rpc_head& head, const_memory_block blk)
 		->size_t
@@ -146,6 +141,7 @@ void rpc_server::_client_process(rpcudp& sock,
 		auto iter = rpc_local().find(head.id.funcid);
 		if (iter == rpc_local().end())
 		{
+			mylog.log(log_error, "Not found rpc number");
 			msg = rpc_error;
 		}
 		else
@@ -160,9 +156,10 @@ void rpc_server::_client_process(rpcudp& sock,
 					_send(head.id, sock, grp.group_block(),
 					addr, addrlen, send_by_udp);
 			});
+		//	mylog.log(log_debug, "split item");
 			return adv;
 		}
-		return 0;
+		return -1;
 	});
 }
 
@@ -193,7 +190,7 @@ void rpc_server::_send(
 		}
 		else
 		{
-			sock.sendto(id, cbuf, bufsize, 0, addr, addrlen);
+			sock.sendto(cbuf, bufsize, RECV_ACK_BY_SELF, addr, addrlen);
 		}
 	}
 }

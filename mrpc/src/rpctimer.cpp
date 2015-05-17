@@ -15,6 +15,9 @@ rpctimer::rpctimer(callback call)
 rpctimer::~rpctimer()
 {
 	using namespace std;
+	_waitlist_lock.lock();
+	_waitlist.clear();
+	_waitlist_lock.unlock();
 	_kill_systimer(_sys_timer);
 }
 
@@ -27,10 +30,10 @@ void rpctimer::cancel_timer(timer_handle handle)
 		_active_time = mstime_t(-1, 0, 0);
 		_sys_timer = 0;
 		_waitlist_lock.lock();
-	//	mylog.log(log_debug, "wait list lock in cancel timer");
+		//	mylog.log(log_debug, "wait list lock in cancel timer");
 		_try_set_next_timer(_abstime());
 		_waitlist_lock.unlock();
-	//	mylog.log(log_debug, "wait list unnnnlock in cancel timer");
+		//	mylog.log(log_debug, "wait list unnnnlock in cancel timer");
 	}
 	else
 	{
@@ -52,8 +55,8 @@ size_t rpctimer::timer_count() const
 	return _timers.size();
 }
 
-bool rpctimer::_try_set_timer(mytime_t curtime,timer_handle handle,
-	const mstime_t& newtm,sysptr_t par,timer_arg& arg)
+bool rpctimer::_try_set_timer(mytime_t curtime, timer_handle handle,
+	const mstime_t& newtm, sysptr_t par, timer_arg& arg)
 {
 	auto breaked_tm = _closed(newtm);
 	if (breaked_tm.second)
@@ -62,7 +65,7 @@ bool rpctimer::_try_set_timer(mytime_t curtime,timer_handle handle,
 		_kill_systimer(_sys_timer);
 
 		mytime_t event_time = newtm.abstime() - curtime;
-		
+
 		_backarg = _make_callback_arg(handle, newtm,
 			event_time, par, arg);
 
@@ -83,7 +86,7 @@ bool rpctimer::_try_set_timer(mytime_t curtime,timer_handle handle,
 }
 
 rpctimer::timer_handle rpctimer::set_timer(
-	sysptr_t par, mytime_t timeout,mytime_t window)
+	sysptr_t par, mytime_t timeout, mytime_t window)
 {//保证主定时器任务绝不在timeout_map中
 	auto curtime = _abstime();
 
@@ -106,7 +109,7 @@ rpctimer::timer_handle rpctimer::set_timer(
 }
 
 std::pair<rpctimer::mytime_t, bool>
-	rpctimer::_closed(const mstime_t& tm)
+rpctimer::_closed(const mstime_t& tm)
 {
 	if (_active_time > tm)
 	{
@@ -116,7 +119,7 @@ std::pair<rpctimer::mytime_t, bool>
 }
 
 std::pair<std::map<rpctimer::timer_handle,
-	rpctimer::timer_arg>::iterator,bool>
+	rpctimer::timer_arg>::iterator, bool>
 	rpctimer::_insert_timer(sysptr_t arg, const mstime_t& tm)
 {
 	timer_handle handle = _alloc_handle();
@@ -141,6 +144,7 @@ size_t rpctimer::_alloc_handle()
 
 void rpctimer::_rpctimer_impl(SYS_TIMER_CALLBACK_ARG)
 {
+	//return;
 	//user是该定时器的mytime_t结构
 
 	callback_arg* arg = reinterpret_cast<callback_arg*>(user);
@@ -161,7 +165,7 @@ void rpctimer::_rpctimer_impl(SYS_TIMER_CALLBACK_ARG)
 
 	//需要保存一次再调用，由于规则：每个定时器同一时间，只能被调用一次
 
-//	mylog.log(log_error, "list lock in timer_impl");
+	//	mylog.log(log_error, "list lock in timer_impl");
 	_waitlist_lock.lock();
 	auto fn = [&](vec_type::reference iter)
 	{
@@ -185,30 +189,30 @@ void rpctimer::_rpctimer_impl(SYS_TIMER_CALLBACK_ARG)
 		}
 
 	};
-//	mylog.log(log_error, "list unnnnnnlock in timer_impl");
+	//	mylog.log(log_error, "list unnnnnnlock in timer_impl");
 	_waitlist_lock.unlock();
 	//mylog.log(log_debug, "list relock in timer_impl");
 	_waitlist_lock.lock();
-//	mylog.log(log_debug, "list relock in");
-	for (auto iter=_waitlist.begin(); iter != _waitlist.end();)
+	//	mylog.log(log_debug, "list relock in");
+	for (auto iter = _waitlist.begin(); iter != _waitlist.end();)
 	{
 		auto& pair = *iter;
 		//调用所有time在mstime_t的窗口期的函数
 		if (_timers.find(pair.second) == _timers.end())
 		{
-		//	mylog.log(log_debug, "list relock in find");
+			//	mylog.log(log_debug, "list relock in find");
 			_waitlist.erase(iter++);
 		}
-		else if (pair.first.in_window(curtime) || curtime>pair.first)
+		else if (pair.first.in_window(curtime) || curtime > pair.first)
 		{
-	//		vec.push_back(iter++);
-		//	mylog.log(log_debug, "list relock in in_window");
+			//		vec.push_back(iter++);
+			//	mylog.log(log_debug, "list relock in in_window");
 			fn(iter);
-		//	mylog.log(log_debug, "list relock in fn");
+			//	mylog.log(log_debug, "list relock in fn");
 		}
 		else
 		{
-		//	mylog.log(log_debug, "list relock in incerment");
+			//	mylog.log(log_debug, "list relock in incerment");
 			++iter;
 		}
 	}
@@ -243,8 +247,8 @@ bool rpctimer::_try_set_next_timer(mytime_t curtime)
 		if (timer_iter != _timers.end() && pair.second != _handle)
 		{
 			sysptr_t par = timer_iter->second.arg;
-			if (_try_set_timer(curtime, pair.second, 
-					pair.first, par, timer_iter->second))
+			if (_try_set_timer(curtime, pair.second,
+				pair.first, par, timer_iter->second))
 			{
 				_waitlist.erase(iter++);
 				return true;
@@ -281,13 +285,13 @@ rpctimer::mytime_t rpctimer::_abstime()
 rpctimer::callback_arg rpctimer::_make_callback_arg(
 	timer_handle handle, mstime_t tm,
 	mytime_t timeout, sysptr_t ptr, timer_arg& arg)
-{ 
+{
 	return callback_arg(this, handle, tm, ptr, timeout, arg);
-}  
+}
 
 rpctimer::system_timer_handle
-	rpctimer::_set_timer_impl(mytime_t timeout,
-		sys_timer_callback callback, callback_arg* arg)
+rpctimer::_set_timer_impl(mytime_t timeout,
+sys_timer_callback callback, callback_arg* arg)
 {
 #ifdef _PLATFORM_WINDOWS
 	return timeSetEvent(timeout, 0, callback,
@@ -300,7 +304,9 @@ bool rpctimer::_kill_systimer(const system_timer_handle& handle)
 {
 	bool is_invaild = (handle == INVAILD_SYS_TIMER_HANDLE);
 	if (!is_invaild)
+	{
 		timeKillEvent(handle);
+	}
 	return GetLastError() != 0 && is_invaild;
 }
 void rpctimer::_rpctimer_callback(SYS_TIMER_CALLBACK_ARG)
@@ -358,7 +364,7 @@ bool mstime::in_window(const mytime_t& tm) const
 		range = abs - tm;
 	else
 		range = tm - abs;
-	bool ret= range <= _window_time;
+	bool ret = range <= _window_time;
 	return ret;
 }
 

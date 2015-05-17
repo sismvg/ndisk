@@ -14,6 +14,10 @@ public:
 	void read_unlock();
 	bool read_try_lock();
 
+	inline void reset()
+	{
+		InitializeSRWLock(&_lock);
+	}
 	void write_lock();
 	void write_unlock();
 	bool write_try_lock();

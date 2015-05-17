@@ -50,6 +50,21 @@ public:
 	 };
 
 	template<class... Arg>
+	void rpc_generic(rpc_group_client* group, const sockaddr_in& addr,
+		multirpc_callback_real callback, sysptr_t ptr, Arg... arg)
+	{
+		RPC_GEN_BASIC;
+		auto& info = static_cast<multirpc_info&>(
+			_ready_rpc(head, true));
+		head.info = &info;
+		head.id.id = 0;
+		auto blk = group.push_mission(head, arg...);
+		info.callback = callback;
+		info.parment = ptr;
+		_send_rpc(group, head.id, addr);
+	}
+
+	template<class... Arg>
 	const_memory_block rpc_generic(RPC_GENERIC_SYNC_ARG)
 	{
 		RPC_GEN_BASIC;
@@ -58,7 +73,7 @@ public:
 		head.info = &info;
 		head.id.id |= ID_ISSYNC;
 		auto blk = group.push_mission(head, arg...); 
-		bool send_by = _send_rpc(group, head.id, addr, group.group_block());
+		bool send_by = _send_rpc(group, head.id, addr);
 		info.flag |= send_by ? RPC_SEND_BY_UDP : RPC_SEND_BY_TCP;
 		rpc_request request = _wait_sync_request(head, &info,
 			send_by);
@@ -69,7 +84,7 @@ public:
 	template<class... Arg>
 	void rpc_generic_async(RPC_GENERIC_ASYNC_ARG)
 	{
-		RPC_GEN_BASIC;
+ 		RPC_GEN_BASIC;
 		auto& info = static_cast<async_rpcinfo&>(
 			_ready_rpc(head, true));
 		head.info = &info;
@@ -77,7 +92,7 @@ public:
 		auto blk = group.push_mission(head, arg...);
 		info.callback = fn;
 		info.parment = callback_arg;
-		_send_rpc(group, head.id, addr, group.group_block());
+		_send_rpc(group, head.id, addr);
 	}
 
 
@@ -120,18 +135,19 @@ private:
 	static bool _is_async_call(const rpc_head&);
 #define SRPC_ARG const sockaddr_in& server,const_memory_block blk
 
-	bool _send_rpc(rpc_group_client&, rpcid id, SRPC_ARG);//返回用tcp还是udp发送数据包
+	bool _send_rpc(rpc_group_client&, rpcid id, const sockaddr_in&);//返回用tcp还是udp发送数据包
 	
 	rpcinfo& _ready_rpc(const rpc_head&, bool is_async = false);
 	size_t _rpc_end(const rpc_head&,
-		const_memory_block, bool is_async = false);
+		const_memory_block, const sockaddr_in* addr,bool is_async = false);
 
 	rpc_request _wait_sync_request(const rpc_head&,
 		sync_rpcinfo* info,bool send_by_udp);//异步rpc无此类型函数
 
 	void _send_udprpc(rpcid id, SRPC_ARG);
 	void _send_tcprpc(SRPC_ARG);
-	void rpc_client_tk::_rpc_process(const_memory_block argbuf);
+	void rpc_client_tk::_rpc_process(const sockaddr_in* addr,
+		const_memory_block argbuf);
 	//utility 节约代码用的
 	size_t _big_packet();
 

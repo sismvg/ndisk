@@ -29,7 +29,8 @@ void rpc_group_middleware::split_group_item(
 
 	size_t adv = 0;
 	auto block = _blk;
-
+	auto val = crc16l(reinterpret_cast<const char*>(block.buffer), block.size);
+	int val2 = crc16l(reinterpret_cast<const char*>(block.buffer), block.size);
 	char flag = _impl.miscount.group_type;
 
 	int is_singal_length = flag&GRPACK_SYNCPACK_FORCE_SIZE;
@@ -42,7 +43,9 @@ void rpc_group_middleware::split_group_item(
 		head.id.id = 0;
 		if (!(flag&GRPACK_ASYNC))
 			head.id.id |= ID_ISSYNC;
-		advance_in(block, rarchive(block.buffer, block.size, head));
+		size_t adv1 = rarchive(block.buffer, block.size, head);
+		//std::cout << adv1 << std::endl;
+		advance_in(block, adv1);
 		adv = fn(head, block);
 		if (same_length_count)
 		{
@@ -90,13 +93,14 @@ size_t rarchive_from(const void* buf,
 	size_t adv = sizeof(char);
 	char flag = '\0';
 	rarchive_from(buf, size, flag);//这里不会调整指针,因为impl里有这个数据
+	//advance_in(buf, size, adv);
 	grp._lock = nullptr;
 	if (!(flag&GRPACK_IS_SINGAL_PACK))
 	{
 		int ptr = 0;
 		if (flag&GRPACK_ASYNC||flag&GRPACK_HAVE_MSG_LOCK)
 		{
-			size_t adv = rarchive(buf, size,
+			adv = rarchive(buf, size,
 				grp._impl, grp._lock);
 			advance_in(buf, size, adv);
 		}

@@ -81,6 +81,15 @@
     <ClInclude Include="rpc_stub_define.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\other_test\rpc_rarchive.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\other_test\rpc_archive.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="rpc_archive_def.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

@@ -43,9 +43,10 @@ public:
 
 	inline void reset(size_t max_count=0)
 	{
-	/*	_count = 0;
+		_count = 0;
 		if (max_count != 0)
-			_max_count = max_count;*/
+			_max_count = max_count;
+	//	_lock.reset();
 	}
 
 	void plusfin(size_t count)
@@ -59,8 +60,8 @@ public:
 	{
 //		++_max_count;
 	}
-private:
-	std::atomic_size_t _count, _max_count;
+public:
+	std::atomic_size_t _count, _max_count, _waiter;
 	rwlock _lock;
 };
 #endif

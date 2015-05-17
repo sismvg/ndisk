@@ -42,10 +42,10 @@ public:
 	rpc_group_client(const rpc_group_middleware&);
 
 	template<class... Arg>
-	const_memory_block push_mission(const rpc_head& head,Arg&... arg)
+	const_memory_block push_mission(const rpc_head& head,const Arg&... arg)
 	{
 		rpcid id = head.id.id;
-		bool is_sync_pack = id.id&ID_ISSYNC;
+		bool is_sync_pack = static_cast<bool>(id.id&ID_ISSYNC);
 
 		size_t size = archived_size(head, arg...);
 		if (head.id.id&ID_ISSYNC)

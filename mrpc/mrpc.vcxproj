@@ -41,13 +41,13 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\BoostLibary\boost_1_55_0;C:\Users\飒\Source\Repos\ndisk\mrpc;C:\Users\飒\Source\Repos\ndisk;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\BoostLibary\boost_1_55_0\stage;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\飒\Source\Repos\ndisk\other_test;D:\BoostLibary\boost_1_55_0;C:\Users\飒\Source\Repos\ndisk\mrpc;C:\Users\飒\Source\Repos\ndisk;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\BoostLibary\boost_1_55_0\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\Users\飒\Source\Repos\ndisk;C:\Users\飒\Source\Repos\ndisk\mrpc;D:\BoostLibary\boost_1_55_0;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\BoostLibary\boost_1_55_0\stage;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\飒\Source\Repos\ndisk\other_test;C:\Users\飒\Source\Repos\ndisk;C:\Users\飒\Source\Repos\ndisk\mrpc;D:\BoostLibary\boost_1_55_0;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\BoostLibary\boost_1_55_0\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -88,6 +88,8 @@
   <ItemGroup>
     <ClInclude Include="..\archive.hpp" />
     <ClInclude Include="..\archive_predefine.hpp" />
+    <ClInclude Include="..\other_test\rpc_archive.hpp" />
+    <ClInclude Include="..\other_test\rpc_rarchive.hpp" />
     <ClInclude Include="..\rpclog.hpp" />
     <ClInclude Include="archive_def.hpp" />
     <ClInclude Include="archive_size.hpp" />
@@ -98,6 +100,7 @@
     <ClInclude Include="rpclock.hpp" />
     <ClInclude Include="rpctimer.hpp" />
     <ClInclude Include="rpcudp.hpp" />
+    <ClInclude Include="rpc_archive_def.hpp" />
     <ClInclude Include="rpc_call.hpp" />
     <ClInclude Include="rpc_cs.hpp" />
     <ClInclude Include="rpc_group_client.hpp" />
