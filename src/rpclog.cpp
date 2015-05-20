@@ -134,7 +134,7 @@ std::wostream& operator<<(std::wostream& stream, const log_item& log)
 	}
 
 	stream << "level:[" << log_item::level_to_string[log.level] << "]-";
-	stream << "msg:[" << log.str << ']';
+	stream << "msg:[" << log.str << log.exstr << ']';
 	return stream;
 }
 

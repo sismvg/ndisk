@@ -42,6 +42,17 @@ typedef void(*mulitrpc_callback)(sockaddr_in addr, sysptr_t arg);
 typedef size_t(*multirpc_callback_real)(const_memory_block blk,
 	sockaddr_in addr, sysptr_t arg);
 
+//flag
+//组播地址,多播地址,普通地址,ipv6,ipv4,同步,异步
+//仅在本机有效
+
+#define RPCINFO_FLAG_MULTICAST 0x1
+#define RPCINFO_FLAG_NORMAL_ADDR 0x10
+#define RPCINFO_FLAG_ADDR_IPV4 0x100
+#define RPCINFO_FLAG_ADDR_IPV6 0x1000
+#define RPCINFO_FLAG_IS_SYNC_CALL 0x10000
+#define RPCINFO_FLAG_IS_ASYNC_CALL 0x100000
+
 struct rpcinfo
 {
 	size_t flag;
@@ -73,6 +84,86 @@ struct multirpc_info
 	multirpc_callback_real callback;
 	sysptr_t parment;
 };
+
+class remote_procall
+{
+public:
+	typedef boost::mpl::na callback_type;
+	remote_procall(size_t flag = 0);
+	virtual size_t operator()(const udpaddr&,const_memory_block) = 0;
+	size_t flag() const;
+	bool is_set(size_t) const;
+	void set(size_t);
+private:
+	size_t _flag;
+};
+
+class active_event;
+class sync_remote_procall
+	:public remote_procall
+{
+public:
+#ifndef REMOTE_CALLBACK_USE_RAW_POINTER
+	typedef std::function<size_t(const_memory_block)> sync_callback;
+#else
+	typedef size_t(*sync_callback)(const_memory_block);
+#endif
+	typedef sync_callback callback_type;
+
+	remote_procall(active_event& eve, sync_callback, size_t flag = 0);
+	virtual size_t operator()(const udpaddr&, const_memory_block);
+private:
+	sync_callback _callback;
+	std::reference_wrapper<active_event> _event;
+};
+
+class async_remote_procall
+	:public remote_procall
+{
+#ifndef REMOTE_CALLBACK_USE_RAW_POINTER
+	typedef std::function<sysptr_t, const_memory_block> async_callback;
+#else
+	typedef size_t(*async_callback)
+		(sysptr_t, const_memory_block) async_callback;
+#endif
+	typedef async_callback callback_type;
+
+	async_remote_procall(async_callback callback,
+		sysptr_t argument, int flag = 0);
+	virtual size_t operator()(const udpaddr&, const_memory_block);
+
+private:
+	sysptr_t _argument;
+	async_callback _callback;
+};
+
+class multicast_remote_procall
+	:public remote_procall
+{
+#ifndef REMOTE_CALLBACK_USE_RAW_POINTER
+	typedef std::function < size_t(const udpaddr&,size_t,
+		sysptr_t, const_memory_block)> multicast_callback;
+#else
+	typedef size_t(*multicast_callback)(const udpaddr&,size_t,
+		sysptr_t, const_memory_block) > multicast_callback;
+#endif
+	typedef multicast_callback callback_type;
+
+	multicast_remote_procall(size_t wait_until,active_event& event,
+		multicast_callback, sysptr_t argument, size_t flag = 0);
+	virtual size_t operator()(const udpaddr&, const_memory_block);
+private:
+	mulitrpc_callback _callback;
+	sysptr_t _argument;
+	size_t wait_until;
+	std::reference_wrapper<active_event> _event;
+};
+
+struct rpc_trunk
+{
+	remote_procall* rpc;
+};
+
 
 #define ID_ISSYNC 0x80000000
 struct rpcid

@@ -29,8 +29,6 @@ void rpc_group_middleware::split_group_item(
 
 	size_t adv = 0;
 	auto block = _blk;
-	auto val = crc16l(reinterpret_cast<const char*>(block.buffer), block.size);
-	int val2 = crc16l(reinterpret_cast<const char*>(block.buffer), block.size);
 	char flag = _impl.miscount.group_type;
 
 	int is_singal_length = flag&GRPACK_SYNCPACK_FORCE_SIZE;

@@ -18,6 +18,30 @@ enum logmsg_level{
 	log_fault
 };
 
+namespace
+{
+	template<class T>
+	void _make_exstr_impl(std::wostream& stream,const T& t1)
+	{
+		stream << t1;
+	}
+	template<class T, class... Arg>
+	void _make_exstr_impl(std::wostream& stream, const T& t1, Arg... arg)
+	{
+		stream << t1;
+		_make_exstr_impl(stream, arg...);
+	}
+
+	template<class... Arg>
+	log_string_type _make_exstr(Arg... arg)
+	{
+		log_string_type ret;
+		std::wostringstream stream(ret);
+		stream.imbue(std::locale("chs"));
+		_make_exstr_impl(stream, arg...);
+		return stream.str();
+	}
+}
 struct log_item
 {
 	log_item();
@@ -26,7 +50,7 @@ struct log_item
 
 	logmsg_level level;
 	id_type log_thread;
-	log_string_type str;
+	log_string_type str, exstr;
 private:
 	void _init(logmsg_level lev, id_type, const log_string_type&);
 public:
@@ -80,6 +104,15 @@ public:
 
 	void log(logmsg_level lev, const char* str);
 
+	template<class String,class... Arg>
+	void log(logmsg_level lev, const String& str, Arg... arg)
+	{
+		auto wlock = ISU_AUTO_WLOCK(_lock);
+		log_item item(lev, GetCurrentThreadId(), str);
+		item.exstr = _make_exstr(arg...);
+		_logs.push_back(item);
+		_write_to_stream(item);
+	}
 	typedef
 		std::vector<log_item>
 		::const_iterator const_iterator;

@@ -16,6 +16,10 @@
 #include <rpc_group_server.hpp>
 typedef boost::noncopyable mynocopyable;
 
+//两种多播模式
+//同步多播：在收到第一个包或用户指定的包数量以前不会返回，
+	//收到第一个包以后可以由用户指定是否继续接受，后续包一律异步，除非wait
+//异步多播:所有包都是异步的，除非wait
 #define RPC_SEND_BY_UDP 0x01
 #define RPC_SEND_BY_TCP 0x10
 
@@ -70,6 +74,8 @@ public:
 		RPC_GEN_BASIC;
 		auto& info = static_cast<sync_rpcinfo&>(
 			_ready_rpc(head, false));
+		head.flag |= RPCINFO_FLAG_NORMAL_ADDR | RPCINFO_FLAG_ADDR_IPV4 |
+			RPCINFO_FLAG_IS_SYNC_CALL;
 		head.info = &info;
 		head.id.id |= ID_ISSYNC;
 		auto blk = group.push_mission(head, arg...); 
