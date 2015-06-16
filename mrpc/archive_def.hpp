@@ -7,7 +7,8 @@
 #include <type_traits>
 
 #include <boost/mpl/if.hpp>
-
+typedef std::true_type true_type;
+typedef std::false_type false_type;
 extern int ptrv;
 template<class T>
 struct real_type

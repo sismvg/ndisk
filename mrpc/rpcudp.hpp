@@ -6,339 +6,337 @@
 //允许UDP包无序的状态下防丢包
 //给rpc_client_tk和rpc_server专用
 
-#include <rpcdef.hpp>
-
+#include <set>
 #include <list>
 #include <vector>
-#include <memory>
 #include <hash_map>
+#include <hash_set>
+
+#ifdef _USER_DEBUG
+#include <random>
+#endif
+
+#include <platform_config.hpp>
+#include <slice.hpp>
+#include <archive.hpp>
+#include <ackbitmap.hpp>
+#include <double_ulong32.hpp>
+#include <multiplex_timer.hpp>
+#include <sliding_window.hpp>
+#include <magic_modules.hpp>
+#include <shared_memory_block.hpp>
+#include <io_complete_port.hpp>
+
+#include <rpcdef.hpp>
 #include <rpctimer.hpp>
 #include <rpclock.hpp>
-#include <hash_set>
-#include <boost/interprocess/sync/interprocess_semaphore.hpp>
-#include <boost/thread/mutex.hpp>
+#include <rpc_utility.hpp>
 
-inline bool operator<(const sockaddr_in& lhs, const sockaddr_in& rhs)
-{
-	return lhs.sin_addr.S_un.S_addr < rhs.sin_addr.S_un.S_addr;
-}
+#include <rpcudp_def.hpp>
+#include <rpcudp_client.hpp>
+#include <rpcudp_detail.hpp>
 
+struct _retrans_trunk;
 
-inline size_t hash_value(const sockaddr_in& addr)
-{
-	return std::hash_value(addr.sin_addr.S_un.S_addr);
-}
-namespace isu
-{
-	template<class Iter, class Size, class OutIter>
-	Iter copy_limit(Iter begin, Iter end,
-		Size limit, OutIter out)
-	{
-		Size count = 0;
-		for (; begin != end&&count < limit; ++count, ++begin, ++out)
-		{
-			*out = *begin;
-		}
-		return begin;
-	}
-}
-
-//ack包,数据包,数据包带上ack,要求本机给出某个包的ack
-#define IS_ACK_PACK 0x01
-#define IS_MAIN_PACK 0x10
-#define IS_MAIN_PACK_WITH_ACK 0x100
-#define IS_ACK_QUERY 0x1000
-
-//ack flag
-#define UDP_ACK_SINGAL 0x10000
-#define UDP_ACK_MULTI 0x100000
-#define UDP_ACK_COMMPRESSED 0x01000000
-//recv flag
-#define WHEN_RECV_ACK_BREAK 0x10000000
-
-//udpmode
-#define RECV_ACK_BY_SELF 0x1
-#define RECV_ACK_BY_UDP 0x10
-#define DISABLE_ACK_NAGLE 0x100
-#define ENABLE_SENDTO_NAGLE 0x1000
-
-struct packid_type
-{
-	packid_type(size_t gpid = 0, size_t slid = 0)
-		:_group_id(gpid), _slice_id(slid)
-	{}
-
-	packid_type(const ulong64 val)
-	{
-		_group_id = val >> 32;
-		_slice_id = val & 0x00000000;
-	}
-
-	inline operator ulong64() const
-	{
-		return to_ulong64();
-	}
-	inline ulong64 to_ulong64() const
-	{
-		ulong64 ret = _group_id;
-		ret <<= 32;
-		ret |= _slice_id;
-		return ret;
-	}
-	size_t _group_id;
-	size_t _slice_id;
-};
-/*
-inline ulong64 hash_value(const packid_type& _Keyval)
-{	// hash _Keyval to size_t value one-to-one
-	return (_Keyval.to_ulong64() ^ _HASH_SEED);
-}*/
-
-inline bool operator<(const packid_type& lhs, const packid_type& rhs)
-{
-	return lhs.to_ulong64() < rhs.to_ulong64();
-}
-
-inline bool operator==(const packid_type& lhs, const packid_type& rhs)
-{
-	return lhs.to_ulong64() == rhs.to_ulong64();
-}
-
-inline bool operator>(const packid_type& lhs, const packid_type& rhs)
-{
-	return lhs.to_ulong64() > rhs.to_ulong64();
-}
-
-inline bool operator==(const sockaddr_in& lhs, const sockaddr_in& rhs)
-{
-	return lhs.sin_port == rhs.sin_port
-		&&lhs.sin_addr.S_un.S_addr == rhs.sin_addr.S_un.S_addr;
-}
-struct slice_vector
-{
-public:
-	size_t group_id;
-	size_t accepted;
-	const_memory_block memorys;
-	struct slice
-	{
-		size_t slice_id;
-		memory_block blk;
-	};
-	std::vector<slice> slices;
-public:
-
-	slice_vector();
-	slice_vector(const_memory_block blk);
-
-	typedef std::vector<slice>::iterator iterator;
-	iterator begin();
-	iterator end();
-	size_t size() const;
-};
-
-//规则
-//所有接口加锁状态未知
-//所有实现加锁状态未知
-//所有实现_impl允许在函数末尾添加一个或多个bool参数以控制具名锁
 class rpcudp
-{//由于是在用户态实现的，所以可能有点浪费内存.
+{
 public:
-
+	friend struct _retrans_trunk;
+	friend class rpcudp_client;
+	typedef int raw_socket;
 	typedef sockaddr_in udpaddr;
+	typedef double_ulong32 ulong64;
+
+	typedef size_t millisecond;
+	typedef multiplex_timer rpctimer;
+	typedef rpctimer::timer_handle timer_handle;
+
+	typedef shared_memory_block<char> shared_memory;
+	typedef shared_memory_block<const char> const_shared_memory;
+
+	typedef RPCUDP_DEFAULT_ALLOCATOR(char) udp_allocator;
+	typedef dynamic_memory_block<char, udp_allocator> dynamic_memory_block;
+
+	typedef rpcudp self_type;
+
+	/*
+		sock is system socket.make sure no other 
+			rpcudp object attach in here.
+		mode:rpcudp how to work.see marco in top
+	*/
+	static const size_t default_work_mode = 
+		ENABLE_SENDTO_NAGLE | WORK_IN_SLOW_NETOWRK;
 
 	rpcudp();
-	rpcudp(socket_type sock, size_t mode = RECV_ACK_BY_SELF);
+	rpcudp(socket_type sock, size_t mode = default_work_mode);
+
 	~rpcudp();
 
-	typedef size_t mtime_t;
+	/*
+		接受数据
+		flag仅能对底层udp socket产生影响
+		addr:用于接收发送者地址
+		addrlen:用于接收发送者地址的长度
+		timeout:recvfrom的超时时间
 
-	int recvfrom(void* buf, size_t bufsize, int flag,
-		udpaddr& addr, int& addrlen, mtime_t timeout = default_timeout);
-	int recvfrom(memory_block, int flag,
-		udpaddr& addr, mtime_t timeout = default_timeout);
+		return:如果有任何错误或超时,则shared_memory为空
+		否则指向一块内存
+	*/
+	shared_memory recvfrom(int flag, udpaddr& addr,
+		int& addrlen, millisecond timeout);
 
-	//洪水模式
-	memory_block recvfrom(int flag, udpaddr& addr, int& addrlen,
-		mtime_t timeout = default_timeout);
-	void recvack();//专门用来接收ack,在此收到的其他类型的包都会被丢掉
-	//
+	shared_memory recvfrom(int flag, udpaddr&, int& addrlen);
 
-	int sendto(const void* buf, size_t bufsize, int flag,
-		const udpaddr& addr, int addrlen);
+	/*
+		发送一块数据
+		即使底层缓冲区不够也会发送,这回造成数据分片.
+		buf:数据开头
+		bufsize:要发送的字节量,不能为0
+		flag:仅对底层udp socket有效
+		addr:目标的地址
+
+		return:不为SOCKET_ERROR即为成功
+		sendto除非用户指定,否则永不因为对方未收到数据而阻塞
+	*/
+	int sendto(const void* buf, size_t bufsize,
+		int flag, const udpaddr& addr);
+
+	/*
+		和上面一样,出了blk是buf和bufsize的集合体
+	*/
 	int sendto(const_memory_block blk, int flag, const udpaddr& addr);
 
+	/*
+		一样,不过提供了shared_memory参数
+		这可以减少数据copy到内部缓冲区,但必须保证memory不会被其他地方修改
+	*/
+	int sendto(const_shared_memory memory, int flag, const udpaddr& addr);
+
+#ifdef _USER_DEBUG
 	//debug用
 	void wait_all_ack();
 	void set_rate_of_packet_loss(double);//设置丢包率
-	//
+#endif
 
-	socket_type socket() const;
-	socket_type deatch();//会导致出了closesocket以外的所有析构任务
-	void setsocket(socket_type sock);//会执行所有析构任务,没啥大用
+	/*
+		底层socket
+	*/
+	raw_socket socket() const;
+	/*
+		除了closesocket以外的所有析构操作
+	*/
+	socket_type deatch();
+	/*
+		就是析构函数
+	*/
+	void close();
+	/*
+		设置要绑定的socket,会清理原来的socket的所有参数
+		并放弃未收到的数据包,所有recvfrom中的线程都会被打断
+	*/
+	void setsocket(socket_type sock);
+
 private:
-	typedef boost::mutex rwlock;
-	typedef rpctimer::mytime_t mytime_t;
-	//debug用
-	initlock _recved_init;
-	//
+	typedef udp_spinlock spinlock_t;
+	typedef rpctimer::timer_handle timer_handle;
+	typedef std::pair<size_t, shared_memory> serlized_modules;
+	
+	//格式标识,所属链接,参数序列化的目的地
+	//头部最多允许多少个字节
+#define SEND_MODULE_MAKE(name) size_t \
+	rpcudp::name(size_t magic,rpcudp_client& client,\
+	archive_packages& pac,size_t max_bits)
+
+#define RECV_MODULE_MAKE(name) bool rpcudp::name(size_t magic,\
+	rpcudp_client& client,\
+	rpcudp_detail::__slice_head_attacher& attacher,\
+	packages_analysis& sis)
+
+	typedef magic_modules < 
+		size_t,
+		bool, 
+		size_t,
+		rpcudp_client&,//arguments
+		rpcudp_detail::__slice_head_attacher&,
+		packages_analysis& > recver_modules_manager;
+
+	typedef magic_modules < 
+		size_t,//magic_type
+		size_t,//result_type
+		size_t,//modules contant
+		rpcudp_client&,//arguments
+		archive_packages&, size_t > sender_modules_manager;
+
+	/*
+		保证这些模组全部都是可重入的
+	*/
+	recver_modules_manager _recver_modules;//解开下面那东西造的
+	sender_modules_manager _sender_modules;//用于构造发送数据包的模块
+
+	struct _complete_argument
+	{
+		_complete_argument(const udpaddr& address,
+			const shared_memory& data)
+			:addr(address), memory(data), client(nullptr)
+		{}
+
+		shared_memory memory;
+		udpaddr addr;
+		rpcudp_client* client;
+	};
+
 	void _init();
+
+	typedef void* kernel_handle;
+	typedef int raw_socket;
+
+	raw_socket _udpsock;
+	std::atomic_size_t _udpmode;
+	rpctimer _timer, _ack_timer;
+	//接受所需要的
+
+	enum recver_message{
+		complete_package=1,
+		recver_exit
+	};
+
+	enum processor_message{
+		get_slice=1,
+		send_slice=2,
+		processor_exit
+	};
+
+	//负责_clients的同步
+	spinlock_t _spinlock;
+
+	rpcudp_client& _get_client(const udpaddr&);
+	std::map<udpaddr, rpcudp_client*> _clients;
+
+	size_t _alloc_group_id();
+	std::atomic_size_t _group_id_allocer;
+
+	//两个定时器
+	void _retrans(timer_handle, sysptr_t client_ptr);
+	void _clean_ack(timer_handle, sysptr_t client_ptr);
+	void _clean_ack_impl(timer_handle, sysptr_t, size_t max);
+#ifdef _WINDOWS
+	//正在recvfrom中的线程的数量,用于析构是发送exit_msg
+	std::atomic_size_t _recver_count;
+
+	io_complete_port _recvport, _process_port;
+
+	kernel_handle _process_thread, _recv_thread_handle;
+#endif
+
+	static SYSTEM_THREAD_RET
+		SYSTEM_THREAD_CALLBACK _recv_thread(sysptr_t);
+
+	void _recv_thread_impl(sysptr_t ptr);
+
+	//---------------------------------------------------
+
+	static SYSTEM_THREAD_RET
+		SYSTEM_THREAD_CALLBACK _processor_thread(sysptr_t);
+
+	void _processor_thread_impl(sysptr_t);
+
+	void _package_process(const udpaddr&, int len,
+		shared_memory, size_t memory_size);
+
+	/*
+		发送模块模组
+	*/
+
+	//用户头最高可以占用百分之几的分片大小
+	static const double _max_user_head_rate;
+
+	//ACK包永远不带主要数据,但是允许有rtt和window调整
+
+	//用于计算rtt,也负责会从对方的rtt请求
+	SEND_MODULE_MAKE(_rtt_calc);
+
+	//发送窗口的调整
+	SEND_MODULE_MAKE(_window_adjustment);
+
+	//捎带ACK
+	SEND_MODULE_MAKE(_ask_ack);
+
+	//获取允许被捎带的分片,这些分片不会有用户头
+	//并且这些分片并不受max_user_head_rate的限制,以为本来也是主数据
+	SEND_MODULE_MAKE(_get_incidentally_slice);
+
+	//由于实现的麻烦,这里没法把主要包也能弄成一个module
+	void _register_send_modules();
+
+	//------------------------------------------------------
+
+	//接受模组
+
+	//接受对方的rtt请求
+	RECV_MODULE_MAKE(_unpack_rtt_calc);
+
+	//接受窗口调整
+	RECV_MODULE_MAKE(_unpack_window_adjustment);
+
+	//解开ack
+	RECV_MODULE_MAKE(_unpack_ack);
+
+	//解开捎带分片
+	RECV_MODULE_MAKE(_unpack_incidentally_slice);
+
+	//主包
+	RECV_MODULE_MAKE(_unpack_main_pack);
+
+	void _register_recv_modules();
+
+	//-----------------------------------------------------
+
+	//动态辅助参数
+	size_t _get_window_size();
+	size_t _get_window_size(const udpaddr&);
+
+	//本机对外网极限速度,单位为bit
+	static size_t _local_speed_for_wlan();
+	//本机参与的局域网的极限速度
+	static size_t _local_network_speed();
+
+	//----------------------------------------------------
+
+	//utility
+	int _sendto_impl(const_memory_block blk,
+		int flag, const udpaddr& addr, int addrlen);
+
+	int _recvfrom_impl(void* buffer,size_t size,
+		int flag, udpaddr& addr, int& addrlen);
+
 	static const size_t mtu = 1500;
-	static const mytime_t default_timeout = 300;
+	static const millisecond default_timeout = 300;
 	static const memory_block _nop_block;
 	static const const_memory_block _const_nop_block;
 
-	typedef char bit;
 	static size_t _get_max_ackpacks();
-	static std::shared_ptr<bit> _alloc_memory(size_t size);
+	static shared_memory _alloc_memory(size_t size);
 	static memory_address _alloc_memory_raw(size_t size);
 	static size_t _get_mtu();
 
-	typedef rpctimer::timer_handle timer_handle;
+#ifdef _USER_DEBUG
+	public:
+	//统计性能数据
+	void _debug_count_performance();
+	//一共发送了多少bit的数据
+	std::atomic_uint_fast64_t _total_bits;
+	//一共重传le多少次
+	std::atomic_size_t _retry_count;
+	//接受了多少字节
+	std::atomic_uint_fast64_t _recved_total_bits;
+	//内存占用,包括了release的字节
+	std::atomic_uint_fast64_t _memory_count;
 
-	size_t _udpmode;
-	socket_type _udpsock;
-	rpctimer _timer, _ack_timer;
-
-	typedef std::list<packid_type> acks;
-	typedef sockaddr_in udpaddr;
-
-	struct slice_head
-	{
-		size_t slice_type;
-		size_t slice_count;
-		size_t packsize;
-		int crc;
-		int slice_crc;
-		size_t start;
-		size_t size;
-		packid_type packid;
-	};
-
-	//ack,等待发送的
-	rwlock _acklock;
-	std::hash_map<udpaddr, acks> _ack_list;
-	std::vector<packid_type> _reqack(const udpaddr&);
-	std::vector<packid_type> _reqack_impl(const udpaddr&, size_t max);
-	std::vector<packid_type> _reqack_impl(acks&, size_t max);
-	void _timed_clear_ack(timer_handle handle, sysptr_t nop);
-	void _send_ack(slice_head, const udpaddr&);
-	
-	rwlock _ack_waitlist_lock;
-	std::hash_map<udpaddr, std::hash_set<packid_type>> _ack_waitlist;//等待接受的ack
-
-	size_t _wait_ack(const udpaddr&, packid_type id);
-	size_t _accept_ack(slice_head&,
-		const udpaddr& addr, const_memory_block& data);
-
-	size_t _accept_ack_impl(const udpaddr&, packid_type id);
-	void _check_ack(timer_handle, sysptr_t resend_arg);
-	size_t _filter_ack(const udpaddr&, memory_block& blk);//过滤并接受ack
-	//缓存数据包
-	struct recved_record
-	{//-1表示全部收到
-		recved_record()
-			:_accepted(0), _data(nullptr,0)
-		{}
-
-		recved_record(memory_block blk, bool entrust_delete = false)
-			:_accepted(0), _data(blk), _mydelete(entrust_delete)
-		{}
-
-		~recved_record()
-		{
-			if (_mydelete)
-				delete _data.buffer;
-		}
-
-		inline void imaccept()
-		{
-			++_accepted;
-		}
-		inline void set_accpeted(size_t val)
-		{
-			_accepted_val.insert(val);
-		}
-		inline memory_block set_fin()
-		{
-			_mydelete = false;
-			_accepted = -1;
-			return _data;
-		}
-		inline bool is_fin() const
-		{
-			return _accepted == -1;
-		}
-		inline memory_block data()
-		{
-			return _data;
-		}
-		inline size_t accepted() const
-		{
-			return _accepted;
-		}
-		inline bool is_accepted(size_t id) const
-		{
-			auto iter = _accepted_val.find(id);
-			return iter != _accepted_val.end();
-		}
 	private:
-		bool _mydelete;
-		size_t _accepted;
-		memory_block _data;
-		std::hash_set<size_t> _accepted_val;
-	};
-
-	rwlock _recved_lock;
-	std::hash_map < udpaddr,
-		std::map < packid_type, recved_record >> _recved;
-	//超时重传
-	struct resend_argument
-	{
-		const_memory_block data;
-		packid_type packid;
-		udpaddr addr;
-		timer_handle handle;
-		size_t retry_limit;
-	};
-	resend_argument* _make_resend_argment(
-		size_t group_id, const udpaddr& addr, const slice_vector::slice& sli);
-	void _release_resend_argument(resend_argument*);
-	//传输
-	boost::interprocess::interprocess_semaphore _window;
-	std::atomic_size_t _group_id_allocer;
-
-	size_t _alloc_group_id();
-	typedef slice_vector::iterator slice_iterator;
-	void _to_send(int flag, size_t group_id, const udpaddr& addr,
-		slice_iterator begin, slice_iterator end);
-
-	typedef std::map<packid_type,
-		recved_record>::iterator hash_map_iter;
-
-	hash_map_iter _write_to(const slice_head&,
-		const udpaddr& addr, const_memory_block blk);
-	slice_vector _slice(const_memory_block, size_t keep,int crc);//keep为ack保留
-	memory_block _get_data_range(const slice_head& head,
-		size_t max_size, memory_block from);//分片头:最高分配多少数据:从哪里分配
-	void _recvack(const udpaddr* addr);
-	struct package_process_ret
-	{
-		size_t accepted_ack;
-		memory_block data;
-	};
-
-	package_process_ret _package_process(
-		const udpaddr&, int len, const_memory_block);
-
-	size_t _get_window_size();
-	size_t _get_window_size(const udpaddr&);
-	size_t _dynamic_timeout();
-
-	//utility
-	int _sendto_impl(socket_type sock, const_memory_block blk,
-		int flag, const udpaddr& addr, int addrlen);
-	int _recvfrom_impl(socket_type sock, memory_block blk,
-		int flag, udpaddr& addr, int& addrlen);
+		//支持丢包控制
+		std::uniform_int<> _debug_random_loss;
+		std::random_device _debug_dev;
+		std::mt19937 _debug_mt;
+#endif
 };
 #endif

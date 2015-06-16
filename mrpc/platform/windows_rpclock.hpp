@@ -5,6 +5,9 @@
 
 #include <atomic>
 #include <boost/smart_ptr/detail/spinlock.hpp>
+#include <boost/thread/mutex.hpp>
+
+typedef boost::mutex kernel_lock;
 
 class rpclock
 {
@@ -16,6 +19,8 @@ public:
 private:
 	boost::detail::spinlock _lock;
 };
+
+typedef boost::detail::spinlock rpc_spinlock;
 
 class initlock
 {

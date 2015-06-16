@@ -71,14 +71,14 @@ inline size_t archived_size()
 		typename iter_wapper<tp>::type > ::type value_type;
 
 template<class T1, class Iter>
-size_t archived_vector_size_impl(const T1& size, Iter iter, true_type)
+size_t archived_vector_size_impl(const T1& size, Iter iter, std::true_type)
 {
 	ITER_VALUE_TYPE(Iter);
 	return size*archived_size<value_type>();
 }
 
 template<class T1, class Iter>
-size_t archived_vector_size_impl(const T1& size, Iter iter, false_type)
+size_t archived_vector_size_impl(const T1& size, Iter iter, std::false_type)
 {
 	size_t result = 0;
 	for (T1 index = 0; index != size; ++index)

@@ -63,10 +63,12 @@ void rpclog::unlock_for_iter()
 //
 void rpclog::_write_to_stream(const log_item& item)
 {
+#ifndef _CLOSE_RPC_LOG
 	if (_stream)
 	{
 		(*_stream) << item << std::endl;
 	}
+#endif
 }
 
 
@@ -115,6 +117,7 @@ K log_item::level_to_string = []()->K
 
 std::wostream& operator<<(std::wostream& stream, const log_item& log)
 {
+#ifndef _CLOSE_RPC_LOG
 	auto now = std::chrono::system_clock::now();
 
 	auto tm = std::chrono::system_clock::to_time_t(now);
@@ -135,6 +138,7 @@ std::wostream& operator<<(std::wostream& stream, const log_item& log)
 
 	stream << "level:[" << log_item::level_to_string[log.level] << "]-";
 	stream << "msg:[" << log.str << log.exstr << ']';
+#endif
 	return stream;
 }
 

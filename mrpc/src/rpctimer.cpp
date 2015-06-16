@@ -15,10 +15,15 @@ rpctimer::rpctimer(callback call)
 rpctimer::~rpctimer()
 {
 	using namespace std;
+	close();
+}
+
+void rpctimer::close()
+{
 	_waitlist_lock.lock();
 	_waitlist.clear();
-	_waitlist_lock.unlock();
 	_kill_systimer(_sys_timer);
+	_waitlist_lock.unlock();
 }
 
 void rpctimer::cancel_timer(timer_handle handle)

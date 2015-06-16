@@ -58,6 +58,12 @@ size_t rarchive_impl(const void* buf, std::size_t buf_size, T& a1, Arg&... arg)
 }
 
 template<class... Arg>
+size_t rarchive(const_memory_block blk, Arg&... arg)
+{
+	return rarchive(blk.buffer, blk.size, arg...);
+}
+
+template<class... Arg>
 size_t rarchive(const void* buf, std::size_t buf_size, Arg&... arg)
 {
 	return rarchive_impl(buf, buf_size, arg...);
@@ -100,6 +106,18 @@ std::size_t archive_to_impl(void* buf, std::size_t buf_size,
 		archive_to_impl(buf, buf_size, arg...);
 }
 
+template<class T>
+std::size_t archive_to(void* buffer, std::size_t bufsize, const T& value)
+{
+	return archive_to_and_size(buffer, bufsize, value);
+}
+
+template<class... Arg>
+std::size_t archive_to(void* buffer, std::size_t bufsize, const Arg&... arg)
+{
+	return archive_to_impl(buffer, bufsize, arg...);
+}
+
 template<class T,class... Arg>
 std::size_t archive_to_impl(void* buf, std::size_t buf_size, 
 	const T& a1,const Arg&... arg)
@@ -108,12 +126,6 @@ std::size_t archive_to_impl(void* buf, std::size_t buf_size,
 	size_t incer_size = incerment<1>(buf, result);
 	result += archive_to_impl(buf, buf_size - incer_size, arg...);
 	return result;
-}
-
-template<class... Arg>
-std::size_t archive_to(void* buf,std::size_t buf_size,const Arg&... arg)
-{
-	return archive_to_impl(buf, buf_size, arg...);
 }
 
 //为单一参数设定，用来自定义archive
@@ -130,7 +142,7 @@ size_t rarchive_from(const void* buffer, size_t size,
 }
 
 template<class T>
-size_t archive_to(memory_address buffer, size_t size,
+size_t archive_to_and_size(memory_address buffer, size_t size,
 	const T& value, size_t value_size = 0)
 {
 	size_t archsize = value_size == 0 ?
@@ -146,7 +158,7 @@ memory_block archive(const T& value)
 	memory_block blk;
 	blk.size = archived_size(value);
 	blk.buffer = new char[blk.size];
-	archive_to(blk.buffer, blk.size, value, blk.size);
+	archive_to_and_size(blk.buffer, blk.size, value, blk.size);
 	return blk;
 }
 #endif

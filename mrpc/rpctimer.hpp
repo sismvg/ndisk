@@ -8,7 +8,7 @@
 #include <functional>
 #include <boost/thread/mutex.hpp>
 #include <rpclock.hpp>
-
+#include <mmiscapi2.h>
 //MSG:代码优化-mstime,rpcimter,
 //锁的顺序优化
 //算法优化以减少timer间的switch
@@ -47,7 +47,11 @@ mstime::mytime_t operator -(const mstime&, const mstime&);
 mstime::mytime_t operator +(const mstime&, const mstime&);
 
 //定时器完成后kill time(上楼抽梯)
+#ifndef KICK_DOWN_THE_LADDER
+
 #define KICK_DOWN_THE_LADDER 0x01
+
+#endif
 //完成后设定timeout时间
 #define EXIT_SET_TIMEROUT 0x10
 
@@ -69,6 +73,7 @@ public:
 	rpctimer(callback);
 	~rpctimer();
 
+	void close();
 	void cancel_timer(timer_handle);
 	//默认都是循环来的
 	timer_handle set_timer(sysptr_t arg,

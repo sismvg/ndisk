@@ -1,8 +1,7 @@
 #ifndef ISU_WINDOWS_RWLOCK_HPP
 #define ISU_WINDOWS_RWLOCK_HPP
 
-#include <WinSock2.h>
-
+#include <windows.h>
 class rwlock
 {
 public:

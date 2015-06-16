@@ -96,10 +96,12 @@ public:
 	template<class String>
 	void log(logmsg_level lev, const String& str)
 	{
+#ifndef _CLOSE_RPC_LOG
 		auto wlock = ISU_AUTO_WLOCK(_lock);
 		log_item item(lev, GetCurrentThreadId(), str);
 		_logs.push_back(item);
 		_write_to_stream(item);
+#endif
 	}
 
 	void log(logmsg_level lev, const char* str);
@@ -107,11 +109,13 @@ public:
 	template<class String,class... Arg>
 	void log(logmsg_level lev, const String& str, Arg... arg)
 	{
+#ifndef _CLOSE_RPC_LOG
 		auto wlock = ISU_AUTO_WLOCK(_lock);
 		log_item item(lev, GetCurrentThreadId(), str);
 		item.exstr = _make_exstr(arg...);
 		_logs.push_back(item);
 		_write_to_stream(item);
+#endif
 	}
 	typedef
 		std::vector<log_item>

@@ -1,0 +1,153 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{BB6478A7-1A2A-4F6A-BA3A-A57CD41A8701}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>other_test</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v120</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v120</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <IncludePath>C:\Users\飒\Source\Repos\ndisk\generic_module;C:\Users\飒\Source\Repos\ndisk\other_test;D:\BoostLibary\boost_1_55_0;C:\Users\飒\Source\Repos\ndisk\mrpc;C:\Users\飒\Source\Repos\ndisk;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\BoostLibary\boost_1_55_0\stage\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <IncludePath>C:\Users\飒\Source\Repos\ndisk\generic_module;D:\BoostLibary\boost_1_55_0\;C:\Users\飒\Source\Repos\ndisk;C:\Users\飒\Source\Repos\ndisk\mrpc;C:\Users\飒\Source\Repos\ndisk\other_test;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\BoostLibary\boost_1_55_0\stage\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_LIB;D_SCL_SECURE_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS;_USER_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>winmm.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <Profile>true</Profile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_LIB;_WINSOCK_DEPRECATED_NO_WARNINGS;_USER_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>winmm.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <Profile>true</Profile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\mrpc\rpctimer.hpp" />
+    <ClInclude Include="..\mrpc\rpcudp_detail.hpp" />
+    <ClInclude Include="..\mrpc\src\active_event.hpp" />
+    <ClInclude Include="..\mrpc\src\windows_rpclock.hpp" />
+    <ClInclude Include="archive_packages.hpp" />
+    <ClInclude Include="dynamic_bitmap.hpp" />
+    <ClInclude Include="dynamic_memory_block.hpp" />
+    <ClInclude Include="gobal_object.hpp" />
+    <ClInclude Include="mpl_helper.hpp" />
+    <ClInclude Include="pure_test.hpp" />
+    <ClInclude Include="rpcudp_client.hpp" />
+    <ClInclude Include="rpcudp_client_detail.hpp" />
+    <ClInclude Include="rpcudp_def.hpp" />
+    <ClInclude Include="rpc_archive.hpp" />
+    <ClInclude Include="rpc_rarchive.hpp" />
+    <ClInclude Include="sample_report.hpp" />
+    <ClInclude Include="socket.hpp" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="targetver.h" />
+    <ClInclude Include="trans_core.hpp" />
+    <ClInclude Include="udt.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\mrpc\src\ackbitmap.cpp" />
+    <ClCompile Include="..\mrpc\src\active_event.cpp" />
+    <ClCompile Include="..\mrpc\src\archive.cpp" />
+    <ClCompile Include="..\mrpc\src\archive_packages.cpp" />
+    <ClCompile Include="..\mrpc\src\double_ulong64.cpp" />
+    <ClCompile Include="..\mrpc\src\io_complete_port.cpp" />
+    <ClCompile Include="..\mrpc\src\magic_modules.cpp" />
+    <ClCompile Include="..\mrpc\src\multiplex_timer.cpp" />
+    <ClCompile Include="..\mrpc\src\rpcdef.cpp" />
+    <ClCompile Include="..\mrpc\src\rpctimer.cpp" />
+    <ClCompile Include="..\mrpc\src\rpcudp.cpp" />
+    <ClCompile Include="..\mrpc\src\rpcudp_detail.cpp" />
+    <ClCompile Include="..\mrpc\src\rpcudp_recv_modules.cpp" />
+    <ClCompile Include="..\mrpc\src\rpcudp_send_modules.cpp" />
+    <ClCompile Include="..\mrpc\src\rpc_utility.cpp" />
+    <ClCompile Include="..\mrpc\src\slice.cpp" />
+    <ClCompile Include="..\mrpc\src\sliding_window.cpp" />
+    <ClCompile Include="..\mrpc\src\Source.cpp" />
+    <ClCompile Include="..\mrpc\src\udp_client_recver.cpp" />
+    <ClCompile Include="..\mrpc\src\udp_client_sender.cpp" />
+    <ClCompile Include="..\mrpc\src\windows_rpclock.cpp" />
+    <ClCompile Include="..\mrpc\src\windows_rwlock.cpp" />
+    <ClCompile Include="..\src\rpclog.cpp" />
+    <ClCompile Include="archive_predefine.cpp" />
+    <ClCompile Include="dynamic_bitmap.cpp" />
+    <ClCompile Include="other_test.cpp" />
+    <ClCompile Include="pure_test.cpp" />
+    <ClCompile Include="rpcudp_client_detail.cpp" />
+    <ClCompile Include="sample_report.cpp" />
+    <ClCompile Include="socket.cpp" />
+    <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="trans_core.cpp" />
+    <ClCompile Include="udt.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="rpc_archive_def.hp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
