@@ -117,6 +117,7 @@
     <ClCompile Include="..\mrpc\src\double_ulong64.cpp" />
     <ClCompile Include="..\mrpc\src\io_complete_port.cpp" />
     <ClCompile Include="..\mrpc\src\magic_modules.cpp" />
+    <ClCompile Include="..\mrpc\src\mpc_utility.cpp" />
     <ClCompile Include="..\mrpc\src\multiplex_timer.cpp" />
     <ClCompile Include="..\mrpc\src\rpcdef.cpp" />
     <ClCompile Include="..\mrpc\src\rpctimer.cpp" />
@@ -124,7 +125,13 @@
     <ClCompile Include="..\mrpc\src\rpcudp_detail.cpp" />
     <ClCompile Include="..\mrpc\src\rpcudp_recv_modules.cpp" />
     <ClCompile Include="..\mrpc\src\rpcudp_send_modules.cpp" />
+    <ClCompile Include="..\mrpc\src\rpc_cs.cpp" />
+    <ClCompile Include="..\mrpc\src\rpc_group.cpp" />
+    <ClCompile Include="..\mrpc\src\rpc_group_client.cpp" />
+    <ClCompile Include="..\mrpc\src\rpc_group_middleware.cpp" />
+    <ClCompile Include="..\mrpc\src\rpc_server.cpp" />
     <ClCompile Include="..\mrpc\src\rpc_utility.cpp" />
+    <ClCompile Include="..\mrpc\src\shared_memory_block.cpp" />
     <ClCompile Include="..\mrpc\src\slice.cpp" />
     <ClCompile Include="..\mrpc\src\sliding_window.cpp" />
     <ClCompile Include="..\mrpc\src\Source.cpp" />
