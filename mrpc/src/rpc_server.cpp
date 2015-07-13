@@ -1,144 +1,166 @@
 
+#include <thread>
+
 #include <archive.hpp>
 
 #include <rpc_server.hpp>
-#include <iostream>
-#include <thread>
+#include <active_event.hpp>
 #include <mrpc_utility.hpp>
-#include <rpclock.hpp>
-#include <rpcudp.hpp>
 
-rpc_server::rpc_server(server_mode mode, const sockaddr_in& addr,
-	size_t backlog, size_t service_thread_limit /* = 0 */)
-	:_server_addr(addr), _mode(mode),
-	_backlog(backlog), _server_thread_limit(service_thread_limit)
+rpc_server::rpc_server(transfer_mode mode, const udpaddr& addr,
+	size_t service_thread_limit)
+	:
+		_mode(mode), 
+		_local(addr), 
+		_server_thread_limit(service_thread_limit)
 {
+	startup_network_api();
 	if (_server_thread_limit == 0)
 		_server_thread_limit = cpu_core_count();
-	if (_backlog == 0)
-		_backlog = 5;
 }
 rpc_server::~rpc_server()
 {
 	stop();
+	close_network_api();
 }
 
-void rpc_server::start(size_t thread_open/* =1 */)
+void rpc_server::run(size_t thread_open/* =1 */)
 {
 	assert(thread_open != 0);
-	initlock lock(thread_open);
-	lock.ready_wait();
+	active_event event(thread_open);
+	event.ready_wait();
 	while (thread_open--)
 	{
-		std::thread thr([&](initlock* lock)
+		std::thread* ptr= 
+			new std::thread([&](active_event* eve)
 		{
-			if (_mode&tcp)
-				_tcp_server(lock);//TODO:要让_tcp&udp_server是异步的
-			if (_mode&udp)
-				_udp_server(lock);
-		}, &lock);
-		thr.detach();
+			if (_mode&transfer_by_tcp)
+				_tcp_server(eve);
+			if (_mode&transfer_by_udp)
+				_udp_server(eve);
+		}, &event);
+		_threads.push_back(ptr);
 	}
-	lock.wait();
-	//Sleep(100);
+	event.wait();
 }
 
 void rpc_server::stop()
 {
 	//TODO:实现它
+	auto wlock = ISU_AUTO_WLOCK(_socks_lock);
+	std::for_each(_socks.begin(), _socks.end(), closesocket);
+	std::for_each(_threads.begin(), _threads.end(),
+		[&](std::thread* ptr)
+	{
+		ptr->join();
+		delete ptr;
+	});
 } 
+
 //impl
 
 socket_type rpc_server::_initsock(int socktype)
 {
 	socket_type sock = socket(AF_INET, socktype, 0);
-	bind(sock, reinterpret_cast<const sockaddr*>(&_server_addr),
-		sizeof(_server_addr));
+	bind(sock, reinterpret_cast<const sockaddr*>(&_local), sizeof(_local));
+
+	auto wlock = ISU_AUTO_WLOCK(_socks_lock);
+
+	_socks.push_back(sock);
+
+	wlock.unlock();
+
 	return sock;
 }
 
-void rpc_server::_tcp_server(initlock* lock)
+void rpc_server::_tcp_server(active_event* event)
 {
-	_async_call([&]()
-	{
-		rpcudp tcpsock(_initsock(SOCK_STREAM));
-		listen(tcpsock.socket(), _backlog);
+	int tcpsock(_initsock(SOCK_STREAM));
+	listen(tcpsock, 5);//WARNING: magic number
 
-		//
-		sockaddr_in client_addr;
-		int client_length = sizeof(client_addr);
-		if (lock)
-			lock->fin();
-		rpcudp client(_rpc_accept(tcpsock, client_addr, client_length));
-		
-		_async_call([&]()
-		{
-			_tcp_client_process(client, client_addr, client_length);
-		});
-	});
+	udpaddr client_addr;
+	int client_length = sizeof(client_addr);
+
+	if (event)
+		event->active();
+
+	int client(_rpc_accept(tcpsock, client_addr, client_length));
+
+	_tcp_client_process(client, client_addr);
 }
 
-void rpc_server::_udp_server(initlock* lock)
+void rpc_server::_udp_server(active_event* eve)
 {
-	_async_call([&]()
-	{
-		rpcudp udpsock(_initsock(SOCK_DGRAM));
-		
-		sockaddr_in client_addr;
-		int client_length = sizeof(client_addr);
+	udt udpsock(_local);
 
-		if (lock)
-			lock->fin();
-		while (true)
-		{
-			auto blk = udpsock.recvfrom(0,
-				client_addr, client_length);
-			_udp_client_process(udpsock, client_addr,
-				client_length, blk);
-		}
-	});
-}
+	if (eve)
+		eve->active();
 
-socket_type rpc_server::_rpc_accept(
-	rpcudp& server, sockaddr_in& addr, int& addr_length)
-{
-	socket_type client=
-		accept(server.socket(), reinterpret_cast<sockaddr*>(&addr), &addr_length);
-	//TODO:可以加入到别的地方去
-	auto err = WSAGetLastError();
-	return client;
-}
-void rpc_server::_tcp_client_process(rpcudp& client,
-	const sockaddr_in& addr, int addrlen)
-{
 	while (true)
 	{
-		char buffer[DEFAULT_RPC_BUFSIZE];
-		size_t bufsize = DEFAULT_RPC_BUFSIZE;
+		udt_recv_result data = udpsock.recv();
 
-	//	mylog.log(log_error, "recv");
-		int dgrmsize = recv(client.socket(), buffer, bufsize, 0);
-		const_memory_block blk;
-		blk.buffer = buffer; blk.size = dgrmsize;
-		_client_process(client, addr, addrlen, blk, false);
+		const io_result& error = data.io_state;
+		if (!error.in_vaild())
+		{
+			if (error.system_socket_error() == WSAENOTSOCK)
+				break;
+			mylog.log(log_error,
+				"udp server have socket_error:", 
+					error.system_socket_error());
+		}
+
+		const_memory_block blk = data.memory;
+		if (blk.buffer == nullptr)
+		{
+			mylog.log(log_error, "unkown error,block address is nullptr");
+			break;
+		}
+		_udp_client_process(udpsock, data.from, blk);
 	}
 }
 
-#define RPC_REQUEST_ARGS head,msg
-void rpc_server::_client_process(rpcudp& sock,
-	const sockaddr_in& addr, int addrlen,
+socket_type rpc_server::_rpc_accept(
+	socket_type server_sock, sockaddr_in& addr, int& addr_length)
+{
+	socket_type client=
+		accept(server_sock, reinterpret_cast<sockaddr*>(&addr), &addr_length);
+	//TODO:可以加入到别的地方去
+	if (WSAGetLastError() != 0)
+	{
+		mylog.log(log_error,
+			"rpc accept error:", WSAGetLastError());
+	}
+	return client;
+}
+
+void rpc_server::_tcp_client_process(socket_type client,const udpaddr& addr)
+{
+	//TODO:实现它
+}
+
+void rpc_server::_client_process(rpcudp& sock,const udpaddr& addr,
 	const_memory_block blk, bool send_by_udp)
 {
-	rpc_group_middleware middleware(blk);
-	rpc_group_server grp(middleware);
-//	mylog.log(log_debug, "all fin");
-	middleware.split_group_item(
-		[&](const rpc_head& head, const_memory_block blk)
-		->size_t
+	static std::hash_set<size_t> keep;
+	remote_produce_middleware middleware(blk);
+	middleware.for_each(
+		[&](remote_produce_group& group,
+			argument_container blk)->size_t
 	{
-		rpc_head back_head = head;
+		rpc_head head;
+		advance_in(blk, rarchive(blk.buffer, blk.size, head));
+		if (keep.find(head.id.exparment()) != keep.end())
+		{
+			mylog.log(log_debug, "Same rpc id", head.id.exparment());
+		}
+		else
+		{
+			keep.insert(head.id.exparment());
+		}
 		rpc_request_msg msg;
-		auto iter = rpc_local().find(head.id.funcid);
+		auto iter = rpc_local().find(head.id.funcid());
+
 		if (iter == rpc_local().end())
 		{
 			mylog.log(log_error, "Not found rpc number");
@@ -146,66 +168,39 @@ void rpc_server::_client_process(rpcudp& sock,
 		}
 		else
 		{
-			size_t adv = 0;
-			_async_call([&]()
-			{
-				msg = rpc_success;
-				auto rpc_server_stub = iter->second;
-				adv = rpc_server_stub(blk, back_head, msg, grp);
-				if (grp.standby())
-					_send(head.id, sock, grp.group_block(),
-					addr, addrlen, send_by_udp);
-			});
-		//	mylog.log(log_debug, "split item");
-			return adv;
+			msg = rpc_success;
+			auto rpc_server_stub = iter->second;
+			rpc_server_stub(blk, head, msg, group);
+			if (group.is_standby())
+				_send(sock, group.to_memory(),
+				addr, send_by_udp);
 		}
-		return -1;
+		return 0;
 	});
 }
 
 
 void rpc_server::_udp_client_process(rpcudp& udpsock,
-	const sockaddr_in& addr, int addrlen, const_memory_block blk)
+	const udpaddr& addr, const_memory_block blk)
 {//MSG:I know ,argument list is too long.
-	_client_process(udpsock, addr, addrlen, blk, true);
+#ifdef _LOG_RPC_RUNNING
+	mylog.log(log_debug, "client process");
+#endif
+	_client_process(udpsock, addr, blk, true);
 }
 
 void rpc_server::_send(
-	rpcid id,rpcudp& sock, const_memory_block argbuf, 
-	const sockaddr_in& addr, int addrlen, bool send_by_udp)
+	rpcudp& sock, const_memory_block argbuf, 
+	const sockaddr_in& addr,bool send_by_udp)
 {
-	const char* cbuf = reinterpret_cast<const char*>(argbuf.buffer);
-	size_t bufsize = argbuf.size;
-	const auto* myaddr = reinterpret_cast<const sockaddr*>(&addr);
-	if (!send_by_udp)
+	if (send_by_udp)
 	{
-		send(sock.socket(), cbuf, bufsize, 0);
+		//sock.send_block(addr, argbuf, 0);
 	}
 	else
 	{
-		if (argbuf.size >= _big_packet() && _mode&tcp)
-		{
-			auto& sock1 = *_connected[_make_sockaddr_key(addr)];
-			send(sock1.socket(), cbuf, bufsize, 0);
-		}
-		else
-		{
-			sock.sendto(cbuf, bufsize, RECV_ACK_BY_SELF, addr, addrlen);
-		}
+		//TODO:实现,动态connect and send
 	}
-}
-
-size_t rpc_server::_big_packet()
-{
-	return 1726;
-}
-
-rpc_server::sockaddr_key 
-	rpc_server::_make_sockaddr_key(const sockaddr_in& addr)
-{
-	sockaddr_key key = 0;
-	//TODO:实现
-	return key;
 }
 
 std::hash_map<func_ident, rpc_server_call>& rpc_server::rpc_local()

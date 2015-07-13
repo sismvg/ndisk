@@ -1,9 +1,55 @@
 #ifndef ISU_ARCHIVE_HPP
 #define ISU_ARCHIVE_HPP
 
-#include <archive_def.hpp>
 #include <archive_size.hpp>
+#include <serialize.hpp>
 
+template<class... Arg>
+size_t archived_size(const Arg&... arg)
+{
+	serialize<> core;
+	return core.archived_size(arg...);
+}
+
+template<class... Arg>
+memory_block archive(const Arg&... arg)
+{
+	serialize<> core;
+	return core.archive(arg...);
+}
+
+template<class... Arg>
+size_t archive_to(memory_address buffer, size_t bufsize, const Arg&... arg)
+{
+	serialize<> core;
+	return core.archive_to(buffer, bufsize, arg...);
+}
+
+template<class... Arg>
+size_t archive_to(memory_block block, const Arg&... arg)
+{
+	return archive_to(block.buffer, block.size, arg...);
+}
+
+template<class... Arg>
+size_t rarchive(const_memory_address buffer, size_t bufsize, Arg&... arg)
+{
+	serialize<> core;
+	return core.rarchive(buffer, bufsize, arg...);
+}
+
+template<class... Arg>
+size_t rarchive_from(const_memory_address buffer, size_t bufsize, Arg&... arg)
+{
+	return rarchive(buffer, bufsize, arg...);
+}
+
+template<class... Arg>
+size_t rarchive(const_memory_block block, Arg&... arg)
+{
+	return rarchive(block.buffer, block.size, arg...);
+}
+/*
 template<class T1, class T2, class... Arg>
 size_t rarchive_impl_air(vector_air air, const void* buf,
 	std::size_t buf_size, T1& count, T2 iter, Arg&... arg)
@@ -105,13 +151,14 @@ std::size_t archive_to_impl(void* buf, std::size_t buf_size,
 	return copyed_size + sizeof_cnt +
 		archive_to_impl(buf, buf_size, arg...);
 }
-
+/*
 template<class T>
 std::size_t archive_to(void* buffer, std::size_t bufsize, const T& value)
 {
 	return archive_to_and_size(buffer, bufsize, value);
-}
+}*/
 
+/*
 template<class... Arg>
 std::size_t archive_to(void* buffer, std::size_t bufsize, const Arg&... arg)
 {
@@ -150,8 +197,8 @@ size_t archive_to_and_size(memory_address buffer, size_t size,
 
 	memcpy(buffer, reinterpret_cast<const void*>(&value), archsize);
 	return archsize;
-}
-
+}*/
+/*
 template<class T>
 memory_block archive(const T& value)
 {
@@ -160,5 +207,5 @@ memory_block archive(const T& value)
 	blk.buffer = new char[blk.size];
 	archive_to_and_size(blk.buffer, blk.size, value, blk.size);
 	return blk;
-}
+}*/
 #endif

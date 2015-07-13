@@ -1,333 +1,335 @@
 
-#include "../rpc_cs.hpp"
-
 #include <assert.h>
 
-#include <thread>
+#include <boost/thread/tss.hpp>
+
+#include <rpc_cs.hpp>
 #include <mrpc_utility.hpp>
-#include <iostream>
+#include <rpc_group_middleware.hpp>
 
-rpc_client_tk::rpc_client_tk(client_mode mode, const sockaddr_in& addr,
-	const sockaddr_in& server_addr, rpc_client* mgr)
-	:_rpc_count(0), _default_group(0,1,
-	GRPACK_IS_SINGAL_PACK|GRPACK_SYNCPACK_FORCE_SIZE)
+boost::thread_specific_ptr<remote_produce_parasite> ifx_parasite;
+
+rpc_client_tk::rpc_client_tk(rpc_client& mgr,const udpaddr& local,
+	transfer_mode mode, remote_produce_group* default_group /* = nullptr */)
+	:
+		_manager(&mgr),
+		_recver(nullptr), 
+		_address(local)
 {
-	_init(mode, addr, server_addr, mgr);
-}
 
-sockaddr_in rpc_client_tk::address() const
-{//TODO:tcp udp mix没有实现
-	sockaddr_in addr;
-	return addr;
-}
-
-ulong64 rpc_client_tk::call_count() const
-{
-	return _rpc_count;
-}
-
-rpc_client* rpc_client_tk::mgr() const
-{
-	return _mgr;
-}
-//impl
-
-rpc_head rpc_client_tk::_make_rpc_head(func_ident num)
-{
-	rpc_head ret;
-	ret.id = _make_rpcid(num);
-	ret.info = nullptr;
-	return ret;
-}
-
-rpc_client_tk::rpc_request 
-rpc_client_tk::_wait_sync_request(const rpc_head& head,
-	sync_rpcinfo* info, bool send_by_udp)
-{
-	rpc_request ret;
-	if (send_by_udp)
-	{
-		auto* lock = info->locke;
-		lock->write_lock();
-		ret.result = info->result;
-		lock->write_unlock();
-	}
-	else
-	{
-		char buf[DEFAULT_RPC_BUFSIZE];
-		int recvsize = recv(_tcpsock, buf, DEFAULT_RPC_BUFSIZE, 0);
-		int va = WSAGetLastError();
-		const_memory_block blk;
-		blk.buffer = buf;
-		blk.size = recvsize;
-		_rpc_process(nullptr, blk);
-		ret.result = info->result;
-	}
-	ret.msg = rpc_success;
-	return ret;
-}
-
-void rpc_client_tk::_init(client_mode mode, const sockaddr_in& addr,
-	const sockaddr_in& server_addr, rpc_client* mgr)
-{
-	_mgr = mgr;
-	_mode = mode;
-	_default_server = server_addr;
-	_initsock(addr, server_addr);
-}
-
-void rpc_client_tk::_initsock(const sockaddr_in& addr,
-	const sockaddr_in& server_addr)
-{
-	socket_type sock = 0;
-	if (_mode&tcp)
-	{
-		sock = _tcpsock = socket(AF_INET, SOCK_STREAM, 0);
-	}
-	if (_mode&udp)
-	{
-		_udpsock.setsocket(socket(AF_INET, SOCK_DGRAM, 0));
-		sock = _udpsock.socket();
-	}
-	bind(sock, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));
-	int val = WSAGetLastError();
-	if (_mode&tcp)
-	{
-		auto errr=connect(_tcpsock,
-			reinterpret_cast<const sockaddr*>(&server_addr), sizeof(server_addr));
-		val = WSAGetLastError();
-	//	mylog.log(log_debug, "conn");
-		int p = 10;
-	}
-}
-
-rpcinfo& rpc_client_tk::_ready_rpc(const rpc_head&, bool is_async /* = false */)
-{
-	rpcinfo* ret = nullptr;
-	if (is_async)
-	{
-		auto* ptr = new async_rpcinfo;
-		ret = ptr;
-	}
-	else
-	{
-		auto* ptr = new sync_rpcinfo;
-		ptr->locke = _mgr->getlock();
-		ret = ptr;
-		ptr->locke->write_lock();
-	}
-	ret->flag = 0;
-	return *ret;
-}
-
-
-rpcid rpc_client_tk::_make_rpcid(unsigned int number)
-{
-	rpcid ret;
-	ret.funcid = number;
-	ret.id = _alloc_callid() | ID_ISSYNC;
-	return ret;
-}
-
-ulong64 rpc_client_tk::_alloc_callid()
-{
-	return ++_rpc_count;
-}
-
-void rpc_client_tk::_send_udprpc(rpcid id, SRPC_ARG)
-{
-	//size_t val = crc16l(reinterpret_cast<const char*>(blk.buffer), blk.size);
-	_udpsock.sendto(blk.buffer, blk.size,
-		RECV_ACK_BY_SELF, server, sizeof(server));
-}
-
-void rpc_client_tk::_send_tcprpc(SRPC_ARG)
-{
-	if (_mode&tcp&&_is_multicast(server))
-		throw std::invalid_argument("send tcprpc not"\
-		" support multicast address");
-	send(_tcpsock, 
-		reinterpret_cast<const char*>(blk.buffer), blk.size, 0);
-	int val = WSAGetLastError();
-}
-
-bool rpc_client_tk::_send_rpc(rpc_group_client& group, rpcid id,
-	const sockaddr_in& server)
-{
-	if (group.standby())
-	{
-		auto blk = group.group_block();
-		int addr_length = sizeof(server);
-
-		auto _tmp_mode = _mode;
-
-#ifdef _DEBUG
-		//当mix模式下的时候tcp和udp都只能指向同一个地址
-		if (_is_same(server, _default_server))
-			throw std::invalid_argument("When rpc client mode is tcp"\
-			",the server address parment must be same with default_server");
+#ifdef _LOG_RPC_RUNNING
+	mylog.log(log_debug, "rpc client tk init");
 #endif
 
-		//if (blk.size >= _big_packet())
-			//_tmp_mode = tcp;
-		if (_tmp_mode & tcp)
+	_init(mgr, local, mode, default_group);
+	_init_socket();
+}
+
+rpc_client_tk::~rpc_client_tk()
+{
+#ifdef _LOG_RPC_RUNNING
+	mylog.log(log_debug, "rpcu client tk destroy");
+#endif
+	stop();
+	delete _default_group;
+}
+
+void rpc_client_tk::run(active_event* event /* = nullptr */)
+{
+	assert(_recver == nullptr);
+	_recver = new std::thread([&](active_event* event)
+	{
+		_recver_thread(event);
+	}, event);
+}
+
+void rpc_client_tk::stop()
+{
+	closesocket(_tcpsock);
+	_tcpsock = SOCKET_ERROR;
+
+	_udpsock.close();
+	
+	//tcpsock和udpsock被关闭以后 _recver一定是joinable的
+		
+	if (_recver)
+	{
+		if (!_recver->joinable())
 		{
-			_send_tcprpc(server, blk);
+			mylog.log(log_error, "rpc client tk "\
+				"can't exit because recver not joinable");
+			return;
 		}
-		else if (_tmp_mode & udp)
-		{
-			_send_udprpc(id, server, blk);
-		}
-		group.reset();
-		return _tmp_mode & udp;
+		_recver->join();
+		delete _recver;
+		_recver = nullptr;
 	}
-	return false;
 }
 
-void rpc_client_tk::_rpc_process(const sockaddr_in* addr,
-	const_memory_block argbuf)
+const udpaddr& rpc_client_tk::address() const
 {
-//	mylog.log(log_debug, "process");
-	rpc_group_middleware group_info(argbuf);
-	size_t index = 0;
-	const sockaddr_in* myaddr = nullptr;
-	group_info.split_group_item(
-		[&](const rpc_head& head,const_memory_block blk)
-		->size_t
-	{
-		size_t ret = 0;
-		rpc_request_msg msg;
-		advance_in(blk, rarchive(blk.buffer, blk.size, msg));
-		if (msg == rpc_success)
-		{
-			ret = _rpc_end(head, blk, nullptr, _is_async_call(head));
-		}
-		else if (msg == rpc_success_and_multicast)
-		{
-			ret = _rpc_end(head, blk, addr, _is_async_call(head));
-		}
-		else
-		{
-			mylog.log(log_debug, "rpc error");
-		}
-		using namespace std;
-		group_info.fin();
-		return ret + sizeof(msg);
-	});
-//	group_info._lock->reset();
+	return _address;
 }
 
-size_t rpc_client_tk::_rpc_end(const rpc_head& head, 
-	const_memory_block argbuf, const sockaddr_in* addr,bool is_async /* = false */)
+remote_produce_group* 
+	rpc_client_tk::set_default_group(remote_produce_group* group)
 {
-	//mylog.log(log_debug, "rpcend");
-	rpcinfo* info = nullptr;
-	size_t ret = 0;
-	if (!is_async)
+	auto* ret = _default_group;
+	_default_group = group;
+	return ret;
+}
+
+//impl
+void rpc_client_tk::_init(rpc_client& mgr, const udpaddr& local,
+	transfer_mode mode, remote_produce_group* group)
+{
+	_address = local;
+	_mode = mode;
+	if (group == nullptr)
 	{
-		sync_rpcinfo* _1 = reinterpret_cast<sync_rpcinfo*>(head.info);
-		_1->result.buffer = new char[argbuf.size];
-		_1->result.size = argbuf.size;
-		memcpy(const_cast<void*>(_1->result.buffer), argbuf.buffer, argbuf.size);
-	//	mylog.log(log_debug, "unlock");
-		_1->locke->write_unlock();
-		return 12;
+		_default_group = new remote_produce_group;
 	}
 	else
 	{
-		if (addr)
+		_default_group = group;
+	}
+}
+
+void rpc_client_tk::_start_rpc(bool async, remote_produce_group& group,
+	const udpaddr& server, remote_procall* rpc)
+{//WARNING:async
+#ifdef _LOG_RPC_RUNNING
+	mylog.log(log_debug, "start rpc is_async", async);
+#endif
+	if (async)
+	{
+		rpc->start(server);
+		_send(group, server);
+	}
+	else
+	{
+		_send(group, server);
+		rpc->start(server);
+		delete rpc;
+	}
+}
+
+rpc_head rpc_client_tk::_make_rpc_head(bool async, func_ident ident)
+{
+	static size_t allocer = 0;
+	rpc_head ret;
+	ret.id = (make_ulong64(ident, 0) | (async ? 0 : ID_ISSYNC) | ++allocer);
+	return ret;
+}
+
+rpc_client_tk::tuple 
+	rpc_client_tk::_ready_rpc(CALL_ARG,remote_procall* rpc)
+{
+	remote_produce_group& grp = _get_group(group);
+
+	auto& parasite = _manager->get_parasite();
+	if (async)
+	{
+		parasite.regist_remote_mission(rpc);
+	}
+	else
+	{
+		parasite.regist_remote_mission_without_lock(rpc);
+	}
+	rpc_trunk trunk;
+	trunk.ptr = &parasite;
+	trunk.rpc = rpc;
+
+	auto head = _make_rpc_head(async, ident);
+	head.trunk = trunk;
+	rpc->ready();
+	return tuple(head);
+}
+
+void rpc_client_tk::_call_impl(CALL_ARG,
+	remote_procall* rpc, std::function<void(const tuple&)> crack)
+{//crack用于执行type相关的代码-用来减少字节生成的
+	auto& grp = _get_group(group);
+	auto tuple = _ready_rpc(CALL_ARG_USE, rpc);
+	crack(tuple);
+	_start_rpc(async, grp, *server, rpc);
+}
+
+remote_produce_group& 
+	rpc_client_tk::_get_group(remote_produce_group* group)
+{
+	return *(group ? group : _default_group);
+}
+
+bool rpc_client_tk::_send(remote_produce_group& group, 
+	const udpaddr& server, bool force_udp /* = false */)
+{
+	bool ret = false;
+	if (group.is_standby())
+	{
+		//mylog.log(log_debug, "is standy");
+		if (force_udp || _mode == transfer_by_udp)
 		{
-			auto* ptr = static_cast<multirpc_info*>(head.info);
-			assert(ptr);
-			ret = ptr->callback(argbuf, *addr, ptr->parment);
+#ifdef _LOG_RPC_RUNNING
+			mylog.log(log_debug, "start send");
+#endif
+			_send_by_udp(server, group);
+			ret = true;
 		}
 		else
 		{
-			auto* _1 = static_cast<async_rpcinfo*>(head.info);
-			_1->callback(_1->parment);
-			ret = 12;
+			_send_by_tcp(server, group);
 		}
+		group.reset();
 	}
 	return ret;
 }
 
-void rpc_client_tk::operator()(void* lock)
-{//WARNING:会参与到mgr的初始化中
-	initlock* mylock = reinterpret_cast<initlock*>(lock);
-
-	sockaddr_in sender;
-	int sender_length = sizeof(sender);
-	mylock->fin();
-	if (_mode&tcp)
+int rpc_client_tk::_send_by_tcp(const udpaddr& server, 
+	remote_produce_group& group)
+{//WARNING:only support small misssion
+	auto blk = group.to_memory();
+	int ret = send(_tcpsock, 
+		reinterpret_cast<const char*>(blk.buffer), blk.size, 0);
+	delete blk.buffer;
+	if (ret == SOCKET_ERROR)
 	{
-		/*while (true)
-		{
-			char buf[DEFAULT_RPC_BUFSIZE];
-			int recvsize = recv(_tcpsock, buf, DEFAULT_RPC_BUFSIZE, 0);
-			int va = WSAGetLastError();
-			const_memory_block blk;
-			blk.buffer = buf;
-			blk.size = recvsize;
-			_rpc_process(nullptr, blk);
-		}*/
+		mylog.log(log_error, "send by tcp have socket_error:",
+			get_last_socket_error());
 	}
-	else
+	return ret;
+}
+
+int rpc_client_tk::_send_by_udp(const udpaddr& server, 
+	remote_produce_group& group)
+{
+	int sock = _udpsock.native();
+	auto blk = group.to_memory();
+	io_result error;// = _udpsock.send_block(core_sockaddr(server), blk, 0);
+	int sock2 = _udpsock.native();
+	if (!error.in_vaild())
+	{
+		mylog.log(log_error, "send by udp have socket_error,",
+			error.system_socket_error());
+	}
+	return error.system_socket_error();
+}
+
+void rpc_client_tk::_process(const udpaddr& server,
+	const_memory_block memory)
+{
+#ifdef _LOG_RPC_RUNNING
+	mylog.log(log_debug, "rpc process mission");
+#endif
+	remote_produce_middleware ware(memory);
+	ware.for_each([&](remote_produce_group& group,
+			const argument_container& raw_args)->size_t
+	{
+		auto args = raw_args;
+		rpc_head head;
+		rpc_request_msg msg;
+		advance_in(args,
+			rarchive(args.buffer, args.size, head, msg));
+		if (msg == rpc_success)
+		{
+			auto rpc = head.trunk.rpc;
+			auto& parsite =
+				*reinterpret_cast<remote_produce_parasite*>(head.trunk.ptr);
+			int val = rpc->is_set(0);
+			if (_is_async(head))
+			{
+				parsite.unregist_remote_mission(rpc,head.id.exparment());
+			}
+			else
+			{
+				parsite.unregist_remote_mission_without_lock
+					(rpc, head.id.exparment());
+			}
+			(*rpc)(server, args);
+			if (!head.id.is_sync_call())
+			{
+				delete rpc;
+				if (ware.get_event())
+					ware.get_event()->active();
+			}
+		}
+		else
+		{
+			mylog.log(log_error, "Have rpc error");
+			throw std::runtime_error("");
+		}
+		return 0;
+	});
+}
+
+void rpc_client_tk::_init_socket()
+{
+	raw_socket sock = 0;
+	if (_mode&transfer_by_tcp)
+	{
+		sock = _tcpsock = socket(AF_INET, SOCK_STREAM, 0);
+		bind(sock, reinterpret_cast<
+			const sockaddr*>(&_address), sizeof(_address));
+	}
+	if (_mode&transfer_by_udp)
+	{
+		_udpsock.setsocket(_address);
+	}
+}
+
+void rpc_client_tk::_recver_thread(active_event* event)
+{
+	if (event)
+	{
+		event->active();
+	}
+	if (_mode==transfer_by_udp)
 	{
 		while (true)
 		{
-			auto blk = _udpsock.recvfrom(0,
-				sender, sender_length);
-			auto cdoe = WSAGetLastError();
-			//TODO:对大型包可以异步
-			_rpc_process(&sender, blk);
+			udt_recv_result data = _udpsock.recv();
+
+			const io_result& error = data.io_state;
+
+			if (!error.in_vaild()&&error.system_socket_error()!=ENOTSOCK)
+			{
+				mylog.log(log_debug,
+					"recver_thread exit,code:", error.system_socket_error());
+				break;
+			}
+
+			const_memory_block blk = data.memory;
+			if (blk.buffer == nullptr)
+			{
+				mylog.log(log_error, "block buffer is nullptr");
+				break;
+			}
+			_process(data.from, blk);
 		}
 	}
 }
 
-size_t rpc_client_tk::_big_packet()
+bool rpc_client_tk::_is_async(const rpc_head& head)
 {
-	return 1450;
-}
-
-bool rpc_client_tk::_is_multicast(const sockaddr_in& addr)
-{
-	return false;
-}
-
-bool rpc_client_tk::_is_same(const sockaddr_in& rhs, const sockaddr_in& lhs)
-{
-	return memcmp(&rhs, &lhs, sizeof(rhs)) == 1;
-}
-
-bool rpc_client_tk::_is_async_call(const rpc_head& head)
-{
-	return !(head.id.id&ID_ISSYNC);
+	return !head.id.is_sync_call();
 }
 
 //rpc_client
 
-rpc_client::rpc_client(client_mode mode,
+rpc_client::rpc_client(transfer_mode mode,
 	const sockaddr_in& server, size_t client_limit)
 {
 	_init(mode, server, client_limit);
 }
 
-rwlock* rpc_client::getlock()
+rpc_client::~rpc_client()
 {
-	auto rlock = ISU_AUTO_RLOCK(_lock);
-	auto iter = _locks.find(GetCurrentThreadId());
-	rwlock* ret = nullptr;
-	if (iter == _locks.end())
+	std::for_each(_src.begin(), _src.end(),
+		[&](rpc_client_tk* word)
 	{
-		rlock.unlock();
-		auto wlock = ISU_AUTO_RLOCK(_lock);
-		ret = &_locks[GetCurrentThreadId()];
-	}
-	else
-	{
-		ret = &iter->second;
-	}
-	return ret;
+		word->stop();
+	});
+	close_network_api();
 }
 
 void rpc_client::add_client(rpc_client_tk* client)
@@ -338,41 +340,58 @@ void rpc_client::add_client(rpc_client_tk* client)
 	_src.push_back(client);
 }
 
-const sockaddr_in& rpc_client::default_server() const
-{
-	return _default_server;
-}
-
-void rpc_client::set_default_server(const sockaddr_in& addr)
-{
-	//TODO:这里处理比较麻烦
-}
-
 const size_t rpc_client::client_count() const
 {
 	return _src.size();
 }
 
-//impl
-void rpc_client::_init(client_mode mode, const sockaddr_in& addr, size_t limit)
+const udpaddr& rpc_client::default_server() const
 {
+	return _server;
+}
+
+void rpc_client::set_server(const udpaddr& addr)
+{
+	_server = addr;
+}
+
+remote_produce_parasite& rpc_client::get_parasite()
+{
+	if (ifx_parasite.get() == nullptr)
+	{
+		ifx_parasite.reset(new remote_produce_parasite(1));
+	}
+	return *ifx_parasite;
+}
+
+
+active_event& rpc_client::get_event()
+{
+	return get_parasite();
+}
+
+//impl
+void rpc_client::_init(transfer_mode mode, const sockaddr_in& addr, size_t limit)
+{
+	startup_network_api();
 	_mode = mode;
-	_default_server = addr;
+	_local = addr;
 	_limit_of_client = limit == 0 ? cpu_core_count() : limit;
 }
 
-void rpc_client::_async(rpc_client_tk& client,initlock* mylock)
+void rpc_client::_async(rpc_client_tk& client, active_event& event)
 {
-	std::thread thr([=,&client](initlock* lock)
+	auto* ptr = &event;
+	std::thread thr([=, &client]()
 	{
-		client(lock);
-	},mylock);
+		client.run(ptr);
+	});
 	thr.detach();
 }
 
-const sockaddr_in& rpc_client::_address(const sockaddr_in* addr)
+const udpaddr& rpc_client::_address(const sockaddr_in* addr)
 {
-	return addr == nullptr ? _default_server : *addr;
+	return _local;
 }
 
 rpc_client_tk& rpc_client::_get_client()
@@ -395,13 +414,85 @@ void rpc_client::_init_clients_impl(
 	addr.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
 	addr.sin_family = AF_INET;
 
-	initlock lock(_limit_of_client);
-	lock.ready_wait();
-	for (auto index = 0; index != _limit_of_client; ++index)
+	active_event event(1);// _limit_of_client);
+	event.ready_wait();
+	for (auto index = 0; index != 1;++index)// _limit_of_client; ++index)
 	{
 		addr.sin_port = htons(RPC_SERVER_PORT + index + 1);
 		_src.push_back(client_maker(addr, this));
-		_async(*_src.back(), &lock);
+		_async(*_src.back(), event);
 	}
-	lock.wait();
+	event.wait();
+}
+
+//
+remote_produce_parasite::
+	remote_produce_parasite(size_t wait_until /* = 1 */)
+:active_event(wait_until)
+{}
+
+remote_produce_parasite::~remote_produce_parasite()
+{}
+
+remote_produce_parasite::why_break
+	remote_produce_parasite::block()
+{
+	wait();
+
+
+	return _why;
+}
+
+active_event& remote_produce_parasite::blocker()
+{
+	return *this;
+}
+
+void remote_produce_parasite::set_unblock(why_break why)
+{
+	_why = why;
+	active();
+}
+
+void remote_produce_parasite::
+	regist_remote_mission(remote_procall* rpc)
+{
+	_spinlock.lock();
+	regist_remote_mission_without_lock(rpc);
+	_spinlock.unlock();
+}
+
+void remote_produce_parasite::
+	regist_remote_mission_without_lock(remote_procall* rpc)
+{
+	auto pair = _missions.insert(rpc);
+	if (!pair.second)
+	{
+		mylog.log(log_error, "The rpc was inserted");
+	}
+}
+
+void remote_produce_parasite::
+	unregist_remote_mission(remote_procall* rpc,size_t number)
+{
+	_spinlock.lock();
+	unregist_remote_mission_without_lock(rpc, number);
+	_spinlock.unlock();
+}
+
+void remote_produce_parasite::
+unregist_remote_mission_without_lock(remote_procall* rpc, size_t number)
+{
+	static std::map<remote_procall*, std::vector<size_t>> keep;
+	auto iter = _missions.find(rpc);
+	if (iter == _missions.end())
+	{
+		mylog.log(log_debug, "Unknow rpc com", rpc);
+	}
+	else
+	{
+		auto& vec = keep[rpc];
+		vec.push_back(number);
+	}
+	_missions.erase(iter);
 }

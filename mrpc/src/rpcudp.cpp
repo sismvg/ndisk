@@ -37,13 +37,13 @@ _ack_timer(MEMBER_BIND_IN(_clean_ack))
 #endif
 
 rpcudp::rpcudp()
-RPCUDP_INIT
+//RPCUDP_INIT
 {
 	_init();
 }
 
 rpcudp::rpcudp(socket_type sock, size_t mode)
-RPCUDP_INIT
+//RPCUDP_INIT
 {
 	_udpmode = mode;
 	_udpsock = sock;
@@ -226,7 +226,7 @@ void rpcudp::_recv_thread_impl(sysptr_t)
 		{
 			recvbuf = shared_memory(memory_block(buffer, code));
 			buffer = new char[bufsize];
-			_memory_count += bufsize;
+//			_memory_count += bufsize;
 		}
 
 		_package_process(addr, addrlen, recvbuf, code);

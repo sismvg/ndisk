@@ -118,11 +118,12 @@ size_t archived_size_impl(const T& var, const Arg&... arg)
 	return archived_size(var) + archived_size_impl(arg...);
 }
 
+/*
 template<class... Arg>
 size_t archived_size(const Arg&... arg)
 {
 	return archived_size_impl(arg...);
-}
+}*/
 
 template<class T, class... Arg>
 std::size_t _count_size(T a1, const Arg&... arg)

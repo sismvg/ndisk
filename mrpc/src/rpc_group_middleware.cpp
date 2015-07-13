@@ -1,8 +1,96 @@
 
 #include <rpcdef.hpp>
+#include <rpc_group.hpp>
 #include <rpc_group_middleware.hpp>
-#include <iostream>
 
+remote_produce_middleware::remote_produce_middleware()
+	:_block(nullptr, 0), _keep(0)
+{}
+
+remote_produce_middleware::
+	remote_produce_middleware(const_memory_block memory)
+	:_block(memory)
+{
+	_keep = rarchive(memory.buffer, memory.size, _head);
+}
+
+void remote_produce_middleware::for_each(middleware_callback callback)
+{
+	const_memory_block args = _block;
+	advance_in(args, _keep);
+
+	auto group = create_group(uid());
+	group->set_trunk(_head.trunk);
+	for (size_t index = 0; index != _head.mission_count; ++index)
+	{
+		size_t adv = 0;
+		if (_head.reailty_marble != 0)
+		{
+			adv = _head.reailty_marble;
+		}
+		else
+		{
+			advance_in(args, rarchive(args.buffer, args.size, adv));
+		}	
+		argument_container arg(args.buffer, adv);
+		callback((*group), arg);
+		advance_in(args, adv);
+	}
+}
+
+active_event* remote_produce_middleware::get_event() const
+{
+	return _head.trunk.event_ptr;
+}
+
+seralize_uid remote_produce_middleware::uid() const
+{
+	return _head.uid;
+}
+
+//static
+std::shared_ptr<remote_produce_group>
+	remote_produce_middleware::create_group(seralize_uid uid)
+{
+	auto iter = _group_map().find(uid);
+	auto& locke = _group_map_lock();
+	locke.read_lock();
+
+	auto ret = iter == _group_map().end() ?
+		nullptr : iter->second(uid);
+
+	locke.read_unlock();
+	return ret;
+}
+
+bool remote_produce_middleware::
+	register_group(seralize_uid uid, register_call call)
+{
+	auto& locke = _group_map_lock();
+
+	locke.write_lock();
+	auto pair = _group_map().insert(std::make_pair(uid, call));
+	locke.write_unlock();
+
+	return pair.second;
+}
+
+rwlock& remote_produce_middleware::_group_map_lock()
+{
+	static rwlock ret;
+	return ret;
+}
+
+std::hash_map<seralize_uid, remote_produce_middleware::register_call>&
+	remote_produce_middleware::_group_map()
+{
+	static std::hash_map<
+		seralize_uid,
+		remote_produce_middleware::register_call> ret;
+	return ret;
+}
+
+/*
 rpc_group_middleware::rpc_group_middleware()
 {
 
@@ -128,3 +216,4 @@ size_t rarchive(const void* buf, size_t size,
 {
 	return rarchive_from(buf, size, grp);
 }
+*/

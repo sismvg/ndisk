@@ -28,15 +28,15 @@ enum trans_error_code{
 struct io_result
 {//BE RULE3:基本上会被inline的函数允许写在头文件中
 	typedef int error_code;
-
+	typedef void* io_mission_handle;
 	/*
 	构造实现相关,不要调用
 	*/
 	io_result()
-		:_code(0), _system_error(0), _id(-1)
+		:_code(0), _system_error(0), _id(nullptr)
 	{}
 
-	io_result(package_id_type id,
+	io_result(io_mission_handle id,
 		error_code local_code = 0, error_code system_code = 0)
 		:_id(id), _code(local_code), _system_error(system_code)
 	{}
@@ -68,17 +68,25 @@ struct io_result
 	/*
 	传输的数据的标识
 	*/
-	inline package_id_type id() const
+	inline io_mission_handle id() const
 	{
 		return _id;
 	}
 private:
 	error_code _code;
 	error_code _system_error;
-	package_id_type _id;
+	io_mission_handle _id;
 };
 
-struct recv_result
+#define WORK_DEFAULT 0x0
+#define POST_SEND_COMPLETE 0x1
+
+#define SEND_COMPLETE 0x0
+#define FAILED_SEND_COMPLETE 0x1
+#define RECV_COMPLETE 0x10
+#define EXIT_COMPLETE 0x100
+
+struct complete_io_result
 {
 public:
 	typedef std::size_t size_t;
@@ -86,7 +94,8 @@ public:
 	typedef const char const_bit;
 	typedef bit* iterator;
 	typedef const_bit* const_iterator;
-	typedef recv_result self_type;
+	typedef void* io_mission_handle;
+	typedef complete_io_result self_type;
 
 	typedef shared_memory_block<const char> const_shared_memory;
 	typedef shared_memory_block<char> shared_memory;
@@ -94,8 +103,8 @@ public:
 	/*
 		构造,实现相关
 	*/
-	recv_result();
-	recv_result(const io_result&, const core_sockaddr& from,
+	complete_io_result();
+	complete_io_result(const io_result&, const core_sockaddr& from,size_t io_type,
 		const shared_memory& memory, size_t size);
 
 	/*
@@ -122,9 +131,13 @@ public:
 	size_t reserve();
 
 	/*
+		完成io的类型
+	*/
+	size_t io_type() const;
+	/*
 		接收到的包的id
 	*/
-	package_id_type id() const;
+	io_mission_handle id() const;
 
 	/*
 		包含头部的原始内存
@@ -132,6 +145,7 @@ public:
 	shared_memory raw_memory();
 	const_shared_memory raw_memory() const;
 private:
+	size_t _io_type;
 	io_result _io_error;
 	core_sockaddr _from;
 	shared_memory _memory;
@@ -140,7 +154,20 @@ private:
 	const_iterator _begin() const;
 };
 
+typedef complete_io_result recv_result;
 #define DEFAULT_ALLOCATOR std::allocator<char>
+
+
+struct retrans_control
+{
+	typedef std::size_t size_t;
+	retrans_control(size_t first_time = 64, size_t retry = 15)
+		:first_timeout(first_time), retry_limit(retry)
+	{
+	}
+	size_t first_timeout, retry_limit;
+};
+
 
 class trans_core
 {
@@ -160,13 +187,16 @@ public:
 	typedef shared_memory_block<char> shared_memory;
 
 	typedef sockaddr_in udpaddr;
+	typedef void* io_mission_handle;
 	typedef std::function < void(const core_sockaddr&,
-		const const_shared_memory&, package_id_type) > bad_send_functional;
+		const const_shared_memory&, io_mission_handle) > bad_send_functional;
 	/*
 		本地地址
 		limit_thread:用于处理recv的返回值的最大线程数量
 		可以当成windows的I/O完成端口使用
 	*/
+	trans_core()
+	{}
 	trans_core(const udpaddr&, size_t limit_thread = 1);
 	trans_core(const udpaddr&,
 		bad_send_functional bad_send, size_t limit_thread = 1);
@@ -177,7 +207,8 @@ public:
 		如果其memory.size()小于预留的头部长度
 		io_resul的waht会返回not_enough_for_head
 	*/
-	io_result assemble_send(const shared_memory& memory, const udpaddr& dest);
+	io_result assemble_send(const shared_memory& memory,
+		const udpaddr& dest, const retrans_control* ctrl_ptr = nullptr);
 
 	/*
 		发送一块已经装配好头部的数据
@@ -187,12 +218,19 @@ public:
 	/*
 		发送数据,头部装配由内部进行
 	*/
-	io_result send(const shared_memory&, const udpaddr&);
+	io_result send(const shared_memory&, const udpaddr&,
+		const retrans_control* ctrl_ptr = nullptr);
 
 	/*
 		接受数据并阻塞,不允许限定接受地址
 	*/
 	recv_result recv();
+
+	void set_flag(size_t flag);
+
+	void close();
+
+	bool cancel_io(const io_mission_handle& handle, bool active_io_faild);
 
 	typedef int raw_socket;
 	

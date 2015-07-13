@@ -7,7 +7,7 @@
 #include <boost/mpl/push_back.hpp>
 
 #include <rpc_archive.hpp>
-#define MYARG const rpc_head& head,rpc_request_msg msg,rpc_group_server& grp
+#define MYARG const rpc_head& head,rpc_request_msg msg,remote_produce_group& grp
 #define MYARG_USE head,msg,grp
 
 template<class T>

@@ -257,11 +257,18 @@ size_t incerment(const Ptr*& ptr, size_t loop_count)
 	CV_INCERMENT(const);
 }
 
-size_t archived_size(const const_memory_block&);
-memory_block archive(const const_memory_block& blk);
-size_t archive_to(memory_address addr,
-	size_t size, const const_memory_block& blk);
+/*
+	TODO:serialize寻找函数的时候重载比xdr_filter要晚
+*/
+size_t archived_size(const const_memory_block& blk);
+size_t archived_size(const memory_block& blk);
 
-size_t rarchive(const_memory_block, memory_block&);
-size_t rarchive_from(const_memory_block, memory_block&);
+size_t archive_to_with_size(memory_address buffer,
+size_t bufsize, const const_memory_block&, size_t size);
+
+size_t archive_to_with_size(memory_address buffer,
+size_t bufsize, const memory_block& blk, size_t size);
+
+size_t rarchive(const_memory_block src, const_memory_block& blk);
+size_t rarchive(const_memory_block src, memory_block& blk);
 #endif

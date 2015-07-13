@@ -145,7 +145,7 @@ void rpcudp_client::_do_send_to(const group_iterator& group_iter,
 		retrans_ptr->push_retrans_job(
 			buffer.memory(), group_iter->first, debug_slice_id++);
 #else
-		retrans_ptr->push_retrans_job(buffer);
+//		retrans_ptr->push_retrans_job(buffer);
 #endif
 		//·¢ËÍ
 

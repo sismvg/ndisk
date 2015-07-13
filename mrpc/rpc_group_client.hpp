@@ -32,6 +32,24 @@
 
 class rpc_group_middleware;
 
+struct mine_count
+{
+	char flag() const;//inface 没啥意义
+	void set_flag(char flag);
+	void clear_flag();
+
+	char group_type : 8;
+	size_t size : 24;
+};
+
+struct group_impl
+{
+	mine_count miscount;//mis的数量
+	size_t mislength;//大多数mis的长度
+	size_t that_length_count;//有多少个连续的与mislength相同的mis
+	int nop;
+};
+
 class rpc_group_client
 {//事实上，这东西就是个archive模块..
 public:

@@ -44,8 +44,11 @@ void io_complete_port::bind(kernel_handle object)
 
 void io_complete_port::close()
 {
-	CloseHandle(native());
-	_set_handle_value(INVALID_HANDLE_VALUE);
+	if (native() != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(native());
+		_set_handle_value(INVALID_HANDLE_VALUE);
+	}
 }
 
 io_complete_port::size_t 

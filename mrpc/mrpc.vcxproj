@@ -41,12 +41,13 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Users\飒\Source\Repos\ndisk\other_test;D:\BoostLibary\boost_1_55_0;C:\Users\飒\Source\Repos\ndisk\mrpc;C:\Users\飒\Source\Repos\ndisk;$(IncludePath)</IncludePath>
+    <IncludePath>C:\Users\飒\Source\Repos\ndisk\generic_module;C:\Users\飒\Source\Repos\ndisk\other_test;D:\BoostLibary\boost_1_55_0;C:\Users\飒\Source\Repos\ndisk\mrpc;C:\Users\飒\Source\Repos\ndisk;$(IncludePath)</IncludePath>
     <LibraryPath>D:\BoostLibary\boost_1_55_0\stage\lib;$(LibraryPath)</LibraryPath>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\Users\飒\Source\Repos\ndisk\other_test;C:\Users\飒\Source\Repos\ndisk;C:\Users\飒\Source\Repos\ndisk\mrpc;D:\BoostLibary\boost_1_55_0;$(IncludePath)</IncludePath>
+    <IncludePath>C:\Users\飒\Source\Repos\ndisk\generic_module;C:\Users\飒\Source\Repos\ndisk\other_test;C:\Users\飒\Source\Repos\ndisk;C:\Users\飒\Source\Repos\ndisk\mrpc;D:\BoostLibary\boost_1_55_0;$(IncludePath)</IncludePath>
     <LibraryPath>D:\BoostLibary\boost_1_55_0\stage\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -55,12 +56,13 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_LIB;_WINSOCK_DEPRECATED_NO_WARNINGS;_USER_DEBUG;_USER_DEBUG_LOG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>ws2_32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <Profile>true</Profile>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -86,43 +88,116 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\archive.hpp" />
     <ClInclude Include="..\archive_predefine.hpp" />
     <ClInclude Include="..\other_test\rpc_archive.hpp" />
     <ClInclude Include="..\other_test\rpc_rarchive.hpp" />
+    <ClInclude Include="..\other_test\udp_client.hpp" />
     <ClInclude Include="..\rpclog.hpp" />
+    <ClInclude Include="ackbitmap.hpp" />
+    <ClInclude Include="active_event.hpp" />
     <ClInclude Include="archive_def.hpp" />
     <ClInclude Include="archive_size.hpp" />
+    <ClInclude Include="client_stub.hpp" />
+    <ClInclude Include="des_verify.hpp" />
+    <ClInclude Include="double_ulong32.hpp" />
+    <ClInclude Include="functional_module.hpp" />
+    <ClInclude Include="imoto_server_stub.hpp" />
+    <ClInclude Include="imouto_auth.hpp" />
+    <ClInclude Include="imouto_client_stub.hpp" />
+    <ClInclude Include="imouto_rpcmsg.hpp" />
+    <ClInclude Include="imouto_rpcstub.hpp" />
+    <ClInclude Include="imouto_rpc_client.hpp" />
+    <ClInclude Include="imouto_rpc_exception.hpp" />
+    <ClInclude Include="imouto_rpc_server.hpp" />
+    <ClInclude Include="imouto_server_stub.hpp" />
+    <ClInclude Include="imouto_simple_translation_kernel.hpp" />
+    <ClInclude Include="io_complete_port.hpp" />
+    <ClInclude Include="magic_modules.hpp" />
+    <ClInclude Include="meta_archive.hpp" />
     <ClInclude Include="mrpc_utility.hpp" />
+    <ClInclude Include="multiplex_timer.hpp" />
     <ClInclude Include="platform\windows_rpclock.hpp" />
     <ClInclude Include="platform\windows_rwlock.hpp" />
+    <ClInclude Include="platform_config.hpp" />
     <ClInclude Include="rpcdef.hpp" />
     <ClInclude Include="rpclock.hpp" />
     <ClInclude Include="rpctimer.hpp" />
     <ClInclude Include="rpcudp.hpp" />
     <ClInclude Include="rpc_archive_def.hpp" />
+    <ClInclude Include="rpc_autolock.hpp" />
     <ClInclude Include="rpc_call.hpp" />
     <ClInclude Include="rpc_cs.hpp" />
+    <ClInclude Include="rpc_expection.hpp" />
+    <ClInclude Include="rpc_group.hpp" />
     <ClInclude Include="rpc_group_client.hpp" />
+    <ClInclude Include="rpc_group_def.hpp" />
     <ClInclude Include="rpc_group_middleware.hpp" />
     <ClInclude Include="rpc_group_server.hpp" />
     <ClInclude Include="rpc_server.hpp" />
     <ClInclude Include="rpc_stub_define.hpp" />
+    <ClInclude Include="rpc_utility.hpp" />
+    <ClInclude Include="serialize.hpp" />
+    <ClInclude Include="serialize_more_filter.hpp" />
+    <ClInclude Include="server_stub_pool.hpp" />
+    <ClInclude Include="shared_memory_block.hpp" />
+    <ClInclude Include="single_archive.hpp" />
+    <ClInclude Include="single_archive_dispath.hpp" />
+    <ClInclude Include="slice.hpp" />
+    <ClInclude Include="sliding_window.hpp" />
+    <ClInclude Include="source_lock.hpp" />
+    <ClInclude Include="src\active_event.hpp" />
+    <ClInclude Include="src\scrwin.hpp" />
+    <ClInclude Include="standard_meta_process.hpp" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="stl_serialize.hpp" />
+    <ClInclude Include="string_serialize.hpp" />
+    <ClInclude Include="stub_ident.hpp" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="type_list.hpp" />
+    <ClInclude Include="xdr.hpp" />
+    <ClInclude Include="xdr_convert.hpp" />
+    <ClInclude Include="xdr_fundamental_wrap.hpp" />
+    <ClInclude Include="xdr_type_define.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\other_test\archive_predefine.cpp" />
+    <ClCompile Include="..\other_test\dynamic_bitmap.cpp" />
+    <ClCompile Include="..\other_test\rpcudp_client_detail.cpp" />
+    <ClCompile Include="..\other_test\sample_report.cpp" />
+    <ClCompile Include="..\other_test\socket.cpp" />
+    <ClCompile Include="..\other_test\trans_core.cpp" />
+    <ClCompile Include="..\other_test\udt.cpp" />
     <ClCompile Include="..\src\rpclog.cpp" />
+    <ClCompile Include="archive_memory_helper.cpp" />
+    <ClCompile Include="archive_test.cpp" />
     <ClCompile Include="mrpc.cpp" />
+    <ClCompile Include="server_stub_pool.cpp" />
+    <ClCompile Include="src\ackbitmap.cpp" />
+    <ClCompile Include="src\active_event.cpp" />
     <ClCompile Include="src\archive.cpp" />
+    <ClCompile Include="src\archive_packages.cpp" />
+    <ClCompile Include="src\double_ulong64.cpp" />
+    <ClCompile Include="src\io_complete_port.cpp" />
+    <ClCompile Include="src\magic_modules.cpp" />
     <ClCompile Include="src\mpc_utility.cpp" />
+    <ClCompile Include="src\multiplex_timer.cpp" />
     <ClCompile Include="src\rpcdef.cpp" />
     <ClCompile Include="src\rpctimer.cpp" />
     <ClCompile Include="src\rpcudp.cpp" />
+    <ClCompile Include="src\rpcudp_detail.cpp" />
+    <ClCompile Include="src\rpcudp_recv_modules.cpp" />
+    <ClCompile Include="src\rpcudp_send_modules.cpp" />
     <ClCompile Include="src\rpc_cs.cpp" />
-    <ClCompile Include="src\rpc_group_client.cpp" />
+    <ClCompile Include="src\rpc_group.cpp" />
     <ClCompile Include="src\rpc_group_middleware.cpp" />
     <ClCompile Include="src\rpc_server.cpp" />
+    <ClCompile Include="src\rpc_utility.cpp" />
+    <ClCompile Include="src\shared_memory_block.cpp" />
+    <ClCompile Include="src\slice.cpp" />
+    <ClCompile Include="src\sliding_window.cpp" />
+    <ClCompile Include="src\Source.cpp" />
+    <ClCompile Include="src\udp_client_recver.cpp" />
+    <ClCompile Include="src\udp_client_sender.cpp" />
     <ClCompile Include="src\windows_rpclock.cpp" />
     <ClCompile Include="src\windows_rwlock.cpp" />
     <ClCompile Include="stdafx.cpp" />

@@ -97,7 +97,7 @@ public:
 		_init(memory, size);
 	}
 
-	operator memory_block()
+	operator memory_block() const
 	{
 		typedef char Bit;
 		SHARED_MEMORY_BLOCK_CHECK_CONST;
@@ -123,7 +123,7 @@ private:
 	template<class T>
 	BitType* _real_buf(T buf)
 	{
-		auto* ptr = reinterpret_cast<const char*>(buf.buffer);
+		auto* ptr = reinterpret_cast<const BitType*>(buf.buffer);
 		return const_cast<BitType*>(ptr);
 	}
 

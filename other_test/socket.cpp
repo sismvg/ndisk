@@ -101,6 +101,7 @@ core_socket::system_socket core_socket::socket() const
 void core_socket::close()
 {
 	::closesocket(socket());
+	_socket = SOCKET_ERROR;
 }
 
 core_socket::operation_result core_socket::bind(const core_sockaddr& addr)
